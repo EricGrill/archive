@@ -160,6 +160,26 @@ If someone says the content was different, generate the hash of their version. I
 
 ---
 
+## Contributing
+
+We welcome contributions! See our:
+- [Contributing Guide](CONTRIBUTING.md) - How to help, project structure, and development setup
+- [Code of Conduct](CODE_OF_CONDUCT.md) - Community guidelines
+- [License](LICENSE) - MIT License
+
+### Project Structure
+```
+├── index.html           # Main archiving interface
+├── hash-explorer.html   # Link Explorer for searching archives
+├── static/js/           # Modular JavaScript libraries
+│   ├── hive-lookup.js       # Hive API with 9-node failover
+│   ├── multipart-content.js # Large content splitting
+│   └── url-normalizer.js    # Canonical URL handling
+└── static/images/       # App assets
+```
+
+---
+
 ## Summary
 
 ArcHive turns any webpage into a permanent, verifiable record. Since digital content is always changing or disappearing, ArcHive lets you save what matters, backed by mathematical proof that can be checked by anyone.
