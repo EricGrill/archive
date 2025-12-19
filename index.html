@@ -2237,36 +2237,21 @@
             <!-- Reset iOS Setup Button (iOS only) - Hidden -->
             <div id="resetIOSContainer" style="display: none;"></div>
             
-            <!-- Toggle Button for Setup Instructions -->
-            <div id="toggleSetupInstructions" style="text-align: center; margin-bottom: 16px;">
-                <button id="toggleSetupText" onclick="toggleSetupVisibility()" style="background: white; border: 1px solid #e2e8f0; padding: 8px 20px; border-radius: 20px; font-size: 14px; color: #64748b; cursor: pointer; transition: all 0.2s;">
-                    Hide Setup Instructions
-                </button>
-            </div>
-            
-            <!-- Setup Instructions Container (collapsible) -->
+            <!-- Setup Instructions Container -->
             <div id="setupInstructionsContainer" style="text-align: center; margin-bottom: 30px;">
-                <h2 style="font-size: 28px; font-weight: 600; margin-bottom: 16px; color: #1a202c;">
-                    Archive Any Web Content Forever
-                </h2>
-                <p style="font-size: 16px; color: #4a5568; margin-bottom: 24px; line-height: 1.6; max-width: 600px; margin-left: auto; margin-right: auto;">
-                    One-time setup, lifetime access. Archive tweets, articles, posts from any website with cryptographic verification.
-                </p>
                 
                 <!-- GET ARCHIVE Button -->
                 <!-- Drag-and-Drop Bookmarklet Bar (Desktop) -->
                 <div id="homepageBookmarkletBar" style="margin-bottom: 20px;">
-                    <p style="font-size: 14px; color: #4a5568; margin-bottom: 12px;">
-                        <strong>Desktop:</strong> Drag this button to your bookmarks bar:
+                    <p style="font-size: 14px; color: #4a5568; margin-bottom: 8px;">
+                        <strong>Desktop:</strong> Drag this button to your bookmarks bar
                     </p>
-                    <p id="bookmarksBarHint" style="font-size: 12px; color: #667eea; margin-bottom: 12px; display: none;">
-                        💡 <strong>Don't see your bookmarks bar?</strong> Press <kbd style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: monospace;">Ctrl+Shift+B</kbd> (Windows/Linux) or <kbd style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: monospace;">Cmd+Shift+B</kbd> (Mac)
-                    </p>
-                    <div id="homepageBookmarkletContainer" style="display: inline-block;">
+                    <p style="font-size: 20px; margin: 0; line-height: 1;">↓</p>
+                    <div id="homepageBookmarkletContainer" style="display: inline-block; margin: 8px 0;">
                         <!-- Bookmarklet link will be inserted here by JavaScript -->
                     </div>
-                    <p style="font-size: 12px; color: #a0aec0; margin-top: 8px;">
-                        Then visit any webpage and click the bookmark to archive it!
+                    <p id="bookmarksBarHint" style="font-size: 12px; color: #667eea; margin-top: 12px; display: none;">
+                        💡 <strong>Don't see your bookmarks bar?</strong> Press <kbd style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: monospace;">Ctrl+Shift+B</kbd> (Windows/Linux) or <kbd style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: monospace;">Cmd+Shift+B</kbd> (Mac)
                     </p>
                 </div>
                 
@@ -2303,8 +2288,8 @@
                 </style>
                 
                 <!-- How it works -->
-                <p style="font-size: 14px; color: #718096; margin-top: 16px;">
-                    <strong>How it works:</strong> 1. Add to bookmarks → 2. Visit any website → 3. Click bookmark → Done!
+                <p style="font-size: 14px; color: #718096; margin-top: 20px; line-height: 1.6; max-width: 500px; margin-left: auto; margin-right: auto;">
+                    <strong>How it works:</strong> 1. Add the ArcHive button to bookmarks → 2. You no longer need to keep the ArcHive site open. Visit any website and click the ArcHive bookmark to preview the content, then post to Hive by following the instructions.
                 </p>
                 
                 <!-- OR divider -->
