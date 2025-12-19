@@ -5586,12 +5586,6 @@ if (typeof module === "object") {
             // Show loading indicator
             qrContainer.innerHTML = '<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px; gap: 16px;"><div style="border: 3px solid #e2e8f0; border-top: 3px solid #3b82f6; border-radius: 50%; width: 48px; height: 48px; animation: spin 0.8s linear infinite;"></div><div style="font-size: 14px; color: #64748b;">Generating QR code...</div></div>';
             
-            console.log('🔍 MOBILE DEBUG: Starting QR code generation...');
-            console.log('📦 QRCode library available:', typeof QRCode);
-            console.log('📦 QRCode.CorrectLevel:', typeof QRCode !== 'undefined' ? typeof QRCode.CorrectLevel : 'QRCode undefined');
-            console.log('📦 qrContainer:', qrContainer);
-            console.log('📦 deepLink:', deepLink);
-            
             // Add spin animation if not already defined
             if (!document.getElementById('spinAnimStyle')) {
                 const style = document.createElement('style');
@@ -5608,7 +5602,6 @@ if (typeof module === "object") {
                 
                 // Clear loading and generate QR code with high error correction for mobile
                 qrContainer.innerHTML = '';
-                console.log('🎨 Attempting QR generation...');
                 new QRCode(qrContainer, {
                     text: deepLink,
                     width: 280,
@@ -12519,8 +12512,6 @@ ${escapeHtml(partContent)}
             
             summaryDiv.style.display = 'block';
             tableDiv.style.display = 'block';
-            
-            updateBlockchainButtonForMultipart();
         }
         
         /**
@@ -12537,16 +12528,6 @@ ${escapeHtml(partContent)}
                 excerptRow.style.display = 'none';
                 icon.textContent = '▼';
             }
-        }
-        
-        /**
-         * Update Blockchain Button for Multi-Part Content
-         * NOTE: This function is no longer used - multi-part detection happens in postWithKeychainExtension/postWithHAS
-         */
-        function updateBlockchainButtonForMultipart() {
-            // DEPRECATED: Multi-part detection now happens earlier in the posting flow
-            // Keeping this function for backward compatibility but it's not actively called
-            console.log('⚠️ updateBlockchainButtonForMultipart() is deprecated');
         }
         
         /**
@@ -12596,16 +12577,6 @@ ${escapeHtml(partContent)}
             
             checkbox.checked = !checkbox.checked;
             postBtn.disabled = !checkbox.checked;
-        }
-        
-        /**
-         * DEPRECATED: Old confirmMultipartPosting function - no longer used
-         * Multi-part confirmation now handled by showMultipartConfirmModal() with dynamic onclick wiring
-         * Keeping this for backward compatibility but it should never be called
-         */
-        async function confirmMultipartPosting() {
-            console.error('❌ confirmMultipartPosting() should not be called - this is deprecated');
-            console.error('   Multi-part posting should go through showMultipartConfirmModal() instead');
         }
         
         /**
@@ -14803,15 +14774,6 @@ ${escapeHtml(partContent)}
         }
         
         /**
-         * DEPRECATED: Redirects to new bookmarklet setup
-         * iOS Shortcuts were removed Nov 26, 2025 due to Apple signing verification issues
-         */
-        function showIOSShortcutInstructions(targetUrl, siteName) {
-            console.log('⚠️ showIOSShortcutInstructions deprecated - redirecting to bookmarklet setup');
-            showIOSBookmarkletSetup();
-        }
-        
-        /**
          * iOS Daily Use Instructions (for users who already set up bookmarklet)
          */
         function showIOSDailyUseInstructions(targetUrl, siteName) {
@@ -16573,11 +16535,7 @@ try {
             document.body.appendChild(notification);
         }
         
-        /**
-         * DEPRECATED: Old inline shortcut generator removed.
-         * Now using file-based approach: archive-extractor.shortcut
-         * See downloadIOSShortcut() at line 17295+
-         */
+        // iOS Shortcut deprecated functions removed - see bookmarklet methods instead
         function generateIOSShortcut_DEPRECATED() {
             const archiveOrigin = window.location.origin;
             
