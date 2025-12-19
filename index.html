@@ -6595,53 +6595,21 @@ if (typeof module === "object") {
             }
             
             /**
-             * 🎓 TEACHING: Server-Side Extraction via Real Extraction Server
-             * Uses Python backend for complex sites that block browser requests
+             * 🎓 TEACHING: Server-Side Extraction (DEPRECATED)
+             * This method is no longer used - ArcHive is now 100% client-side.
+             * For complex sites, users should use the bookmarklet method.
+             * Keeping this stub to prevent errors if called from legacy code paths.
              */
             async processWithServer(url) {
-                console.log(`🖥️ Calling Real Extraction Server...`);
-                
-                // Check if server is running on port 8000
-                const serverUrl = 'http://localhost:8000/api/extract';
-                
-                try {
-                    const response = await fetch(serverUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ url: url })
-                    });
-                    
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({}));
-                        throw new Error(errorData.error || `Server returned ${response.status}`);
-                    }
-                    
-                    const data = await response.json();
-                    console.log(`✅ Server extraction successful`);
-                    
-                    // Convert server response to our format
-                    return await this.extractWithReadability(
-                        data.html || data.content, 
-                        data.title || '', 
-                        url, 
-                        'server-extraction',
-                        null
-                    );
-                    
-                } catch (error) {
-                    console.error(`❌ Server extraction failed: ${error.message}`);
-                    
-                    // Provide helpful guidance
-                    const siteName = this.getSiteName(url);
-                    throw new Error(
-                        `Cannot extract from ${sanitizeForHTML(siteName)} - Server extraction required but unavailable.\n\n` +
-                        `Workaround: Right-click on the page → View Page Source → Copy the HTML → Paste it here.\n\n` +
-                        `Technical: Real Extraction Server (port 8000) is not running. ` +
-                        `For automated ${sanitizeForHTML(siteName)} extraction, the server-based deployment is needed.`
-                    );
-                }
+                console.warn('⚠️ processWithServer is deprecated - ArcHive is now 100% client-side');
+                const siteName = this.getSiteName(url);
+                throw new Error(
+                    `For ${sanitizeForHTML(siteName)}, please use the ArcHive bookmarklet:\n\n` +
+                    `1. Drag the "ArcHive" button to your bookmarks bar\n` +
+                    `2. Navigate to the page you want to archive\n` +
+                    `3. Click the ArcHive bookmark\n\n` +
+                    `This extracts content directly from your browser - 100% decentralized!`
+                );
             }
             
             /**
@@ -7762,11 +7730,11 @@ if (typeof module === "object") {
         }
         
         /**
-         * Auto-verify when content is already extracted (from bookmarklet or server)
+         * Auto-verify when content is already extracted (from bookmarklet or client-side)
          * Compares hashes immediately without showing F12 instructions
          * 
          * Handles two content types:
-         * 1. Server-extracted: Plain text from /api/extract - hash directly
+         * 1. Client-side extracted: Plain text from ContentExtractor - hash directly
          * 2. Bookmarklet-extracted: HTML that needs Readability parsing
          */
         async function performAutoVerification(url, matchingPosts, contentOrHtml) {
@@ -7788,10 +7756,10 @@ if (typeof module === "object") {
                 console.log('🔍 Processing content for hash comparison...');
                 let currentData;
                 
-                // Check if we have server-extracted data (plain text, not HTML)
+                // Check if we have client-side extracted data (plain text, not HTML)
                 const serverData = window._serverExtractedData;
                 if (serverData && serverData.content) {
-                    console.log('📡 Using server-extracted plain text content');
+                    console.log('📡 Using client-side extracted plain text content');
                     // Server returns plain text - compute hashes directly using processor's method
                     const content = serverData.content;
                     const title = serverData.title || 'Untitled';
@@ -10361,29 +10329,27 @@ if (typeof module === "object") {
                             closeModal();
                             showNotFoundModal(url, true); // true = content already extracted
                         } else {
-                            // No pre-extracted content - use server extraction
+                            // No pre-extracted content - use client-side extraction
                             // 🚀 AUTO-EXTRACTION: Extract content before showing not-found modal
+                            // NOTE: 100% client-side - no server dependency (GitHub Pages compatible)
                             try {
                                 showLoadingModal('Extracting content for archiving...');
                                 
-                                const extractResponse = await fetch('/api/extract', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ url: url })
+                                const extractor = new ContentExtractor();
+                                const extractResult = await extractor.extract(url, (status) => {
+                                    showLoadingModal(status);
                                 });
                                 
-                                const extractResult = await extractResponse.json();
-                                
-                                if (extractResult.success) {
-                                    console.log('✅ Content extracted successfully via server');
+                                if (extractResult && extractResult.content) {
+                                    console.log('✅ Content extracted successfully via client-side extraction');
                                     
                                     // Store extracted data
                                     window._serverExtractedData = {
-                                        title: extractResult.title,
+                                        title: extractResult.title || '',
                                         content: extractResult.content,
                                         url: extractResult.url || url,
                                         provenance: extractResult.provenance || null,
-                                        method: 'server-side'
+                                        method: 'client-side'
                                     };
                                     
                                     // Put content in textarea
@@ -10394,9 +10360,13 @@ if (typeof module === "object") {
                                 } else {
                                     // Extraction failed - still show modal but without content
                                     closeModal();
-                                    showNotFoundModal(url, false, extractResult.error);
+                                    showNotFoundModal(url, false);
                                 }
                             } catch (e) {
+                                // Handle bookmarklet offer gracefully
+                                if (e.message === 'BOOKMARKLET_OFFERED') {
+                                    return; // Modal already shown by ContentExtractor
+                                }
                                 console.warn('⚠️ Could not extract content:', e);
                                 closeModal();
                                 showNotFoundModal(url, false);
@@ -10424,38 +10394,38 @@ if (typeof module === "object") {
                     console.log('   Bookmarklet HTML:', hasBookmarkletContent ? window._bookmarkletExtractedHtml.length + ' chars' : 'none');
                     console.log('   Textarea content:', hasTextareaContent ? textareaContent.length + ' chars' : 'none');
                 } else {
-                    // No pre-extracted content - use server extraction
+                    // No pre-extracted content - use client-side extraction
                     // 🚀 AUTO-EXTRACTION: Extract current content before showing modal
-                    // This enables automatic hash comparison like the bookmarklet
+                    // NOTE: 100% client-side - no server dependency (GitHub Pages compatible)
                     try {
                         showLoadingModal('Extracting current content for verification...');
                         
-                        const extractResponse = await fetch('/api/extract', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ url: url })
+                        const extractor = new ContentExtractor();
+                        const extractResult = await extractor.extract(url, (status) => {
+                            showLoadingModal(status);
                         });
                         
-                        const extractResult = await extractResponse.json();
-                        
-                        if (extractResult.success) {
-                            console.log('✅ Content extracted for verification via server');
+                        if (extractResult && extractResult.content) {
+                            console.log('✅ Content extracted for verification via client-side');
                             extractedData = extractResult;
                             
                             // Store for later use
                             window._serverExtractedData = {
-                                title: extractResult.title,
+                                title: extractResult.title || '',
                                 content: extractResult.content,
                                 url: extractResult.url || url,
                                 provenance: extractResult.provenance || null,
-                                method: 'server-side'
+                                method: 'client-side'
                             };
                             
                             // Put content in textarea for processing
                             document.getElementById('contentInput').value = extractResult.content;
                         }
                     } catch (e) {
-                        console.warn('⚠️ Could not extract content for auto-verification:', e);
+                        // Handle bookmarklet offer gracefully - don't log as error
+                        if (e.message !== 'BOOKMARKLET_OFFERED') {
+                            console.warn('⚠️ Could not extract content for auto-verification:', e);
+                        }
                     }
                 }
                 
@@ -17634,45 +17604,15 @@ try {
                             
                             await smartArchive(sourceUrl);
                         } else {
-                            // For regular sites: Use server extraction
-                            console.log('📄 iOS: Using server extraction for', sourceUrl);
+                            // For regular sites: Use client-side extraction
+                            console.log('📄 iOS: Using client-side extraction for', sourceUrl);
                             
-                            // Let smartArchive handle it - server will extract content
+                            // Let smartArchive handle it - client-side extraction via ContentExtractor
                             await smartArchive(sourceUrl);
                         }
                     } catch (decodeError) {
                         console.error('❌ iOS data decode error:', decodeError);
                         showNotification('❌ Could not process. Try again.');
-                    }
-                    return;
-                }
-                
-                // Legacy: iOS Shortcut server relay mode (kept for backward compatibility)
-                if (hash.startsWith('#shortcut=')) {
-                    const token = hash.substring('#shortcut='.length);
-                    console.log('📱 iOS Shortcut token detected (legacy):', token.substring(0, 8) + '...');
-                    window.location.hash = '';
-                    
-                    try {
-                        const response = await fetch('/api/shortcut-transfer/' + token);
-                        const result = await response.json();
-                        
-                        if (result.success && result.data) {
-                            const payload = result.data;
-                            showNotification('✅ Content received from ' + (payload.source || 'iOS'));
-                            
-                            const textarea = document.getElementById('contentInput');
-                            if (textarea && payload.html) {
-                                textarea.value = payload.html;
-                                window._bookmarkletExtractedHtml = payload.html;
-                                
-                                if (payload.url) {
-                                    await smartArchive(payload.url);
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        console.error('Legacy shortcut error:', e);
                     }
                     return;
                 }
