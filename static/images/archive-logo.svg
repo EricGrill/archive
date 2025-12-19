@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120">
+  <defs>
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f5d742;stop-opacity:1" />
+      <stop offset="25%" style="stop-color:#e6c030;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#d4a520;stop-opacity:1" />
+      <stop offset="75%" style="stop-color:#c9981a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#b8860b;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="goldHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fff8dc;stop-opacity:0.6" />
+      <stop offset="50%" style="stop-color:#ffd700;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#b8860b;stop-opacity:0" />
+    </linearGradient>
+    <linearGradient id="borderGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffd700;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#daa520;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#b8860b;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="innerShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feOffset dx="1" dy="2"/>
+      <feGaussianBlur stdDeviation="1" result="offset-blur"/>
+      <feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse"/>
+      <feFlood flood-color="#8B6914" flood-opacity="0.4" result="color"/>
+      <feComposite operator="in" in="color" in2="inverse" result="shadow"/>
+      <feComposite operator="over" in="shadow" in2="SourceGraphic"/>
+    </filter>
+  </defs>
+  
+  <!-- Shield outer border with glow -->
+  <path d="M50 5 L90 20 L90 55 C90 80 70 100 50 115 C30 100 10 80 10 55 L10 20 Z" 
+        fill="url(#borderGold)" filter="url(#glow)"/>
+  
+  <!-- Shield main body -->
+  <path d="M50 10 L85 23 L85 55 C85 77 67 95 50 108 C33 95 15 77 15 55 L15 23 Z" 
+        fill="url(#goldGradient)" filter="url(#innerShadow)"/>
+  
+  <!-- Shield highlight overlay -->
+  <path d="M50 10 L85 23 L85 55 C85 77 67 95 50 108 C33 95 15 77 15 55 L15 23 Z" 
+        fill="url(#goldHighlight)"/>
+  
+  <!-- Inner border detail -->
+  <path d="M50 18 L78 28 L78 55 C78 73 63 88 50 98 C37 88 22 73 22 55 L22 28 Z" 
+        fill="none" stroke="url(#borderGold)" stroke-width="1.5" opacity="0.6"/>
+  
+  <!-- Letter A -->
+  <text x="50" y="72" 
+        font-family="Georgia, Times, serif" 
+        font-size="42" 
+        font-weight="bold"
+        fill="#8B6914"
+        text-anchor="middle"
+        opacity="0.9">A</text>
+  
+  <!-- Letter A highlight -->
+  <text x="49" y="71" 
+        font-family="Georgia, Times, serif" 
+        font-size="42" 
+        font-weight="bold"
+        fill="#DAA520"
+        text-anchor="middle">A</text>
+</svg>
