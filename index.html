@@ -2369,6 +2369,13 @@ Examples:
                     <!-- Keychain Detection Warning -->
                     <div id="keychainWarning" style="display: none; margin-bottom: 12px;"></div>
                     
+                    <!-- Decline Rewards Option -->
+                    <label id="declineRewardsLabel" style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px; cursor: pointer; color: rgba(255,255,255,0.9); font-size: 14px;">
+                        <input type="checkbox" id="declineRewardsCheckbox" style="width: 18px; height: 18px; cursor: pointer; accent-color: #10b981;">
+                        <span>Decline Rewards</span>
+                        <span title="When checked, any potential rewards from this post will be declined. Use this for archiving without monetization." style="color: rgba(255,255,255,0.6); cursor: help;">ⓘ</span>
+                    </label>
+                    
                     <button id="blockchainBtn" onclick="postToHive()" aria-label="Publish to blockchain" style="
                         width: 100%;
                         background: white;
@@ -11462,50 +11469,81 @@ Source: ${processor.currentData.source}
             console.log(`🖼️ Posting ${(data.images && data.images.length) || 0} images to Hive metadata`);
             console.log(`📝 Hive title (${hiveTitle.length} chars): ${hiveTitle.substring(0, 100)}...`);
             
-            window.hive_keychain.requestPost(
-                username,
-                hiveTitle,
-                body,
-                'archivedcontenthaf',  // Use primary tag as parent_permlink (Hive requirement)
-                '',
-                JSON.stringify(metadata),
-                permlink,
-                '',
-                (response) => {
-                    window._keychainPosting = false;
-                    console.log('🔍 Full Hive Keychain response:', JSON.stringify(response, null, 2));
+            // Check if decline rewards is enabled
+            const declineRewards = document.getElementById('declineRewardsCheckbox')?.checked || false;
+            
+            // Response handler (shared between requestPost and requestBroadcast)
+            const handleResponse = (response) => {
+                window._keychainPosting = false;
+                console.log('🔍 Full Hive Keychain response:', JSON.stringify(response, null, 2));
+                
+                if (response.success) {
+                    updateBlockchainButtonState('success');
+                    const ecencyUrl = `https://ecency.com/@${username}/${permlink}`;
+                    console.log('✅ Hive post success:', response);
                     
-                    if (response.success) {
-                        updateBlockchainButtonState('success'); // UX: Show success state
-                        const ecencyUrl = `https://ecency.com/@${username}/${permlink}`;
-                        console.log('✅ Hive post success:', response);
-                        
-                        // Extract txid from Keychain response
-                        const txid = response.result?.id || response.result?.tx_id || null;
-                        
-                        // Update history with blockchain data
-                        processor.updateHistoryWithBlockchainData(data.source, txid, username, permlink);
-                        updateHistory();
-                        
-                        showHiveSuccessModal(username, permlink, ecencyUrl, data.hashes.content.sha256);
-                    } else {
-                        let errorMsg = response.message || response.error || response.msg || 'Unknown error';
-                        const errorDetails = JSON.stringify(response, null, 2);
-                        
-                        if (errorMsg === 'assert_exception') {
-                            errorMsg = `assert_exception - This usually means:\n• Title too long (was ${hiveTitle.length} chars, max 90)\n• Invalid characters in title or content\n• Check console for details`;
-                        } else if (errorMsg.includes('insufficient')) {
-                            errorMsg = 'Insufficient RC (Resource Credits). Wait a few minutes or power up more HIVE.';
-                        } else if (errorMsg.includes('bandwidth')) {
-                            errorMsg = 'Bandwidth limit exceeded. Wait a few minutes and try again.';
-                        }
-                        
-                        console.error('❌ Hive post error details:', errorDetails);
-                        updateBlockchainButtonState('error'); // UX: Show error state
-                        showNotification(`❌ Hive post failed:\n\n${errorMsg}`);
+                    const txid = response.result?.id || response.result?.tx_id || null;
+                    processor.updateHistoryWithBlockchainData(data.source, txid, username, permlink);
+                    updateHistory();
+                    
+                    showHiveSuccessModal(username, permlink, ecencyUrl, data.hashes.content.sha256);
+                } else {
+                    let errorMsg = response.message || response.error || response.msg || 'Unknown error';
+                    const errorDetails = JSON.stringify(response, null, 2);
+                    
+                    if (errorMsg === 'assert_exception') {
+                        errorMsg = `assert_exception - This usually means:\n• Title too long (was ${hiveTitle.length} chars, max 90)\n• Invalid characters in title or content\n• Check console for details`;
+                    } else if (errorMsg.includes('insufficient')) {
+                        errorMsg = 'Insufficient RC (Resource Credits). Wait a few minutes or power up more HIVE.';
+                    } else if (errorMsg.includes('bandwidth')) {
+                        errorMsg = 'Bandwidth limit exceeded. Wait a few minutes and try again.';
                     }
+                    
+                    console.error('❌ Hive post error details:', errorDetails);
+                    updateBlockchainButtonState('error');
+                    showNotification(`❌ Hive post failed:\n\n${errorMsg}`);
                 }
-            );
+            };
+            
+            if (declineRewards) {
+                // Use requestBroadcast for decline rewards (allows comment_options)
+                console.log('💰 Decline rewards enabled - using requestBroadcast');
+                const operations = [
+                    ['comment', {
+                        parent_author: '',
+                        parent_permlink: 'archivedcontenthaf',
+                        author: username,
+                        permlink: permlink,
+                        title: hiveTitle,
+                        body: body,
+                        json_metadata: JSON.stringify(metadata)
+                    }],
+                    ['comment_options', {
+                        author: username,
+                        permlink: permlink,
+                        max_accepted_payout: '0.000 HBD',
+                        percent_hbd: 10000,
+                        allow_votes: true,
+                        allow_curation_rewards: true,
+                        extensions: []
+                    }]
+                ];
+                
+                window.hive_keychain.requestBroadcast(username, operations, 'Posting', handleResponse);
+            } else {
+                // Use requestPost for normal posts (simpler)
+                window.hive_keychain.requestPost(
+                    username,
+                    hiveTitle,
+                    body,
+                    'archivedcontenthaf',
+                    '',
+                    JSON.stringify(metadata),
+                    permlink,
+                    '',
+                    handleResponse
+                );
+            }
         }
         
         /**
@@ -12644,6 +12682,24 @@ ${escapeHtml(partContent)}
                     }
                 ]];
                 
+                // Check if decline rewards is enabled
+                const declineRewards = document.getElementById('declineRewardsCheckbox')?.checked || false;
+                if (declineRewards) {
+                    operations.push([
+                        'comment_options',
+                        {
+                            author: payload.author,
+                            permlink: payload.permlink,
+                            max_accepted_payout: '0.000 HBD',
+                            percent_hbd: 10000,
+                            allow_votes: true,
+                            allow_curation_rewards: true,
+                            extensions: []
+                        }
+                    ]);
+                    console.log('💰 Decline rewards enabled - adding comment_options');
+                }
+                
                 window.hive_keychain.requestBroadcast(
                     payload.author,
                     operations,
@@ -12685,6 +12741,24 @@ ${escapeHtml(partContent)}
                     json_metadata: JSON.stringify(payload.json_metadata)
                 }
             }];
+            
+            // Check if decline rewards is enabled
+            const declineRewards = document.getElementById('declineRewardsCheckbox')?.checked || false;
+            if (declineRewards) {
+                operations.push({
+                    type: 'comment_options',
+                    params: {
+                        author: payload.author,
+                        permlink: payload.permlink,
+                        max_accepted_payout: '0.000 HBD',
+                        percent_hbd: 10000,
+                        allow_votes: true,
+                        allow_curation_rewards: true,
+                        extensions: []
+                    }
+                });
+                console.log('💰 Decline rewards enabled - adding comment_options (HAS)');
+            }
             
             const result = await postToHiveWithHAS(payload.author, operations);
             
