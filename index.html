@@ -2369,12 +2369,16 @@ Examples:
                     <!-- Keychain Detection Warning -->
                     <div id="keychainWarning" style="display: none; margin-bottom: 12px;"></div>
                     
-                    <!-- Decline Rewards Option -->
-                    <label id="declineRewardsLabel" style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px; cursor: pointer; color: rgba(255,255,255,0.9); font-size: 14px;">
-                        <input type="checkbox" id="declineRewardsCheckbox" style="width: 18px; height: 18px; cursor: pointer; accent-color: #10b981;">
-                        <span>Decline Rewards</span>
-                        <span title="When checked, any potential rewards from this post will be declined. Use this for archiving without monetization." style="color: rgba(255,255,255,0.6); cursor: help;">ⓘ</span>
-                    </label>
+                    <!-- Rewards Options Dropdown -->
+                    <div id="rewardsOptionContainer" style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; color: rgba(255,255,255,0.9); font-size: 14px;">
+                        <label for="rewardsOption" style="font-weight: 500;">Rewards:</label>
+                        <select id="rewardsOption" style="padding: 8px 12px; border-radius: 8px; border: none; background: rgba(255,255,255,0.95); color: #334155; font-size: 14px; cursor: pointer; min-width: 140px;">
+                            <option value="normal">Normal</option>
+                            <option value="decline">Decline</option>
+                            <option value="burn">Burn (@null)</option>
+                        </select>
+                        <span title="Normal: Receive post rewards as usual&#10;Decline: No rewards generated&#10;Burn: Rewards sent to @null (deflationary)" style="color: rgba(255,255,255,0.6); cursor: help; font-size: 16px;">ⓘ</span>
+                    </div>
                     
                     <button id="blockchainBtn" onclick="postToHive()" aria-label="Publish to blockchain" style="
                         width: 100%;
@@ -11469,8 +11473,8 @@ Source: ${processor.currentData.source}
             console.log(`🖼️ Posting ${(data.images && data.images.length) || 0} images to Hive metadata`);
             console.log(`📝 Hive title (${hiveTitle.length} chars): ${hiveTitle.substring(0, 100)}...`);
             
-            // Check if decline rewards is enabled
-            const declineRewards = document.getElementById('declineRewardsCheckbox')?.checked || false;
+            // Get rewards option (normal, decline, or burn)
+            const rewardsOption = document.getElementById('rewardsOption')?.value || 'normal';
             
             // Response handler (shared between requestPost and requestBroadcast)
             const handleResponse = (response) => {
@@ -11505,9 +11509,21 @@ Source: ${processor.currentData.source}
                 }
             };
             
-            if (declineRewards) {
-                // Use requestBroadcast for decline rewards (allows comment_options)
-                console.log('💰 Decline rewards enabled - using requestBroadcast');
+            if (rewardsOption !== 'normal') {
+                // Use requestBroadcast for decline/burn rewards (allows comment_options)
+                console.log(`💰 Rewards mode: ${rewardsOption} - using requestBroadcast`);
+                
+                // Build comment_options based on rewards mode
+                const commentOptions = {
+                    author: username,
+                    permlink: permlink,
+                    max_accepted_payout: rewardsOption === 'decline' ? '0.000 HBD' : '1000000.000 HBD',
+                    percent_hbd: 10000,
+                    allow_votes: true,
+                    allow_curation_rewards: true,
+                    extensions: rewardsOption === 'burn' ? [[0, { beneficiaries: [{ account: 'null', weight: 10000 }] }]] : []
+                };
+                
                 const operations = [
                     ['comment', {
                         parent_author: '',
@@ -11518,15 +11534,7 @@ Source: ${processor.currentData.source}
                         body: body,
                         json_metadata: JSON.stringify(metadata)
                     }],
-                    ['comment_options', {
-                        author: username,
-                        permlink: permlink,
-                        max_accepted_payout: '0.000 HBD',
-                        percent_hbd: 10000,
-                        allow_votes: true,
-                        allow_curation_rewards: true,
-                        extensions: []
-                    }]
+                    ['comment_options', commentOptions]
                 ];
                 
                 window.hive_keychain.requestBroadcast(username, operations, 'Posting', handleResponse);
@@ -12682,22 +12690,20 @@ ${escapeHtml(partContent)}
                     }
                 ]];
                 
-                // Check if decline rewards is enabled
-                const declineRewards = document.getElementById('declineRewardsCheckbox')?.checked || false;
-                if (declineRewards) {
-                    operations.push([
-                        'comment_options',
-                        {
-                            author: payload.author,
-                            permlink: payload.permlink,
-                            max_accepted_payout: '0.000 HBD',
-                            percent_hbd: 10000,
-                            allow_votes: true,
-                            allow_curation_rewards: true,
-                            extensions: []
-                        }
-                    ]);
-                    console.log('💰 Decline rewards enabled - adding comment_options');
+                // Check rewards option (normal, decline, or burn)
+                const rewardsOption = document.getElementById('rewardsOption')?.value || 'normal';
+                if (rewardsOption !== 'normal') {
+                    const commentOptions = {
+                        author: payload.author,
+                        permlink: payload.permlink,
+                        max_accepted_payout: rewardsOption === 'decline' ? '0.000 HBD' : '1000000.000 HBD',
+                        percent_hbd: 10000,
+                        allow_votes: true,
+                        allow_curation_rewards: true,
+                        extensions: rewardsOption === 'burn' ? [[0, { beneficiaries: [{ account: 'null', weight: 10000 }] }]] : []
+                    };
+                    operations.push(['comment_options', commentOptions]);
+                    console.log(`💰 Rewards mode: ${rewardsOption} - adding comment_options`);
                 }
                 
                 window.hive_keychain.requestBroadcast(
@@ -12742,22 +12748,23 @@ ${escapeHtml(partContent)}
                 }
             }];
             
-            // Check if decline rewards is enabled
-            const declineRewards = document.getElementById('declineRewardsCheckbox')?.checked || false;
-            if (declineRewards) {
+            // Check rewards option (normal, decline, or burn)
+            const rewardsOption = document.getElementById('rewardsOption')?.value || 'normal';
+            if (rewardsOption !== 'normal') {
+                const commentOptions = {
+                    author: payload.author,
+                    permlink: payload.permlink,
+                    max_accepted_payout: rewardsOption === 'decline' ? '0.000 HBD' : '1000000.000 HBD',
+                    percent_hbd: 10000,
+                    allow_votes: true,
+                    allow_curation_rewards: true,
+                    extensions: rewardsOption === 'burn' ? [[0, { beneficiaries: [{ account: 'null', weight: 10000 }] }]] : []
+                };
                 operations.push({
                     type: 'comment_options',
-                    params: {
-                        author: payload.author,
-                        permlink: payload.permlink,
-                        max_accepted_payout: '0.000 HBD',
-                        percent_hbd: 10000,
-                        allow_votes: true,
-                        allow_curation_rewards: true,
-                        extensions: []
-                    }
+                    params: commentOptions
                 });
-                console.log('💰 Decline rewards enabled - adding comment_options (HAS)');
+                console.log(`💰 Rewards mode: ${rewardsOption} - adding comment_options (HAS)`);
             }
             
             const result = await postToHiveWithHAS(payload.author, operations);
