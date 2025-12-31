@@ -17538,12 +17538,34 @@ try {
                     showNotification('🏛️ Fetching Wayback Machine content...', 5000);
                     
                     try {
-                        // Wayback Machine has CORS headers, so we can fetch directly
-                        const response = await fetch(waybackUrl);
-                        if (!response.ok) {
-                            throw new Error(`Failed to fetch: ${response.status}`);
+                        // Wayback Machine needs CORS proxy - try multiple proxies with fallback
+                        const corsProxies = [
+                            'https://api.allorigins.win/raw?url=',
+                            'https://corsproxy.io/?'
+                        ];
+                        
+                        let html = null;
+                        let lastError = null;
+                        
+                        for (const proxy of corsProxies) {
+                            try {
+                                console.log('🔄 Trying CORS proxy:', proxy);
+                                const proxyUrl = proxy + encodeURIComponent(waybackUrl);
+                                const response = await fetch(proxyUrl);
+                                if (response.ok) {
+                                    html = await response.text();
+                                    console.log('✅ CORS proxy succeeded:', proxy);
+                                    break;
+                                }
+                            } catch (proxyError) {
+                                console.warn('⚠️ Proxy failed:', proxy, proxyError.message);
+                                lastError = proxyError;
+                            }
                         }
-                        const html = await response.text();
+                        
+                        if (!html) {
+                            throw lastError || new Error('All CORS proxies failed');
+                        }
                         
                         // Extract title from the HTML
                         const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
