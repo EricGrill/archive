@@ -17534,27 +17534,31 @@ try {
                         window.history.replaceState({}, '', window.location.pathname);
                     }
                     
-                    // Direct extraction via ContentExtractor (CORS proxy cascade)
+                    // Direct extraction via ArchiveProcessor (CORS proxy cascade)
                     showNotification('🏛️ Extracting Wayback Machine content...', 5000);
                     showLoadingModal('Fetching archived content from Wayback Machine...');
                     
                     try {
-                        const extractor = new ContentExtractor();
-                        const extractResult = await extractor.extract(waybackUrl, (status) => {
+                        // Use the global processor instance (ArchiveProcessor)
+                        const extractResult = await processor.processContent(waybackUrl, (status) => {
                             showLoadingModal(status);
                         });
                         
-                        if (extractResult && extractResult.content) {
+                        if (extractResult && extractResult.text) {
                             console.log('✅ Wayback content extracted successfully');
                             closeModal();
                             
+                            // Store the extracted content
+                            document.getElementById('contentInput').value = extractResult.text;
+                            window._serverExtractedData = {
+                                title: extractResult.title || 'Archived Page',
+                                content: extractResult.text,
+                                url: waybackUrl,
+                                method: 'wayback-cors-proxy'
+                            };
+                            
                             // Process via smartArchive just like bookmarklet
-                            await smartArchive(
-                                extractResult.content, 
-                                'web.archive.org', 
-                                extractResult.title || 'Archived Page',
-                                waybackUrl
-                            );
+                            await smartArchive(waybackUrl);
                         } else {
                             closeModal();
                             showNotification('❌ Could not extract Wayback content. Try the bookmarklet on the Wayback page.', 5000);
