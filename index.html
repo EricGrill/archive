@@ -17591,39 +17591,112 @@ try {
                     const decodedUrl = decodeURIComponent(waybackUrl);
                     const wbMatch = decodedUrl.match(/web\.archive\.org\/web\/(\d{14})\/(.+)/);
                     
-                    let originalUrl = decodedUrl;
-                    let waybackMeta = null;
-                    
                     if (wbMatch) {
                         const timestamp = wbMatch[1];
-                        originalUrl = wbMatch[2].startsWith('http') ? wbMatch[2] : 'http://' + wbMatch[2];
-                        waybackMeta = {
+                        const originalUrl = wbMatch[2].startsWith('http') ? wbMatch[2] : 'http://' + wbMatch[2];
+                        
+                        // Build RAW Wayback URL using 'id_' modifier
+                        // This returns the original HTML without Wayback's toolbar/URL rewriting
+                        const rawWaybackUrl = `https://web.archive.org/web/${timestamp}id_/${originalUrl}`;
+                        
+                        const waybackMeta = {
                             timestamp: timestamp,
                             snapshotDate: timestamp.slice(0, 4) + '-' + timestamp.slice(4, 6) + '-' + timestamp.slice(6, 8),
                             originalUrl: originalUrl,
-                            waybackUrl: decodedUrl
+                            waybackUrl: decodedUrl,
+                            rawWaybackUrl: rawWaybackUrl
                         };
                         console.log('📊 Wayback metadata extracted:', waybackMeta);
-                    }
-                    
-                    // Fill in the URL input with the ORIGINAL URL (not Wayback wrapper)
-                    const sourceUrlInput = document.getElementById('sourceUrlInput');
-                    if (sourceUrlInput) {
-                        sourceUrlInput.value = originalUrl;
-                        showNotification('🏛️ Wayback URL loaded! Extracting via CORS proxy...', 3000);
+                        console.log('🔗 Raw Wayback URL (id_ modifier):', rawWaybackUrl);
                         
                         // Store wayback metadata for the extraction
                         window._waybackMeta = waybackMeta;
                         window._extractionMode = 'wayback';
                         
-                        // Auto-trigger extraction after a short delay
-                        // This will use the CORS proxy since it's a cross-origin URL
-                        setTimeout(() => {
-                            const archiveBtn = document.getElementById('archiveBtn');
-                            if (archiveBtn) {
-                                archiveBtn.click();
+                        // Show the ORIGINAL URL in the input (for display purposes)
+                        const sourceUrlInput = document.getElementById('sourceUrlInput');
+                        if (sourceUrlInput) {
+                            sourceUrlInput.value = originalUrl;
+                        }
+                        
+                        showNotification('🏛️ Fetching archived snapshot from ' + waybackMeta.snapshotDate + '...', 5000);
+                        
+                        // Directly fetch the RAW Wayback URL via CORS proxy
+                        // This gets the ACTUAL archived content, not the current live site
+                        (async () => {
+                            try {
+                                console.log('🏛️ Fetching archived content via CORS proxy...');
+                                
+                                // Try each CORS proxy
+                                let html = null;
+                                for (let i = 0; i < CORS_PROXIES.length; i++) {
+                                    const proxy = CORS_PROXIES[i];
+                                    const proxyUrl = proxy + encodeURIComponent(rawWaybackUrl);
+                                    
+                                    try {
+                                        console.log(`  📡 Trying CORS proxy ${i+1}/${CORS_PROXIES.length}...`);
+                                        const response = await fetch(proxyUrl, {
+                                            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ArcHive/1.0)' },
+                                            signal: AbortSignal.timeout(15000)
+                                        });
+                                        
+                                        if (!response.ok) {
+                                            throw new Error(`HTTP ${response.status}`);
+                                        }
+                                        
+                                        html = await response.text();
+                                        console.log(`  ✅ Fetched ${html.length} chars via proxy ${i+1}`);
+                                        break;
+                                    } catch (proxyError) {
+                                        console.warn(`  ⚠️ Proxy ${i+1} failed:`, proxyError.message);
+                                    }
+                                }
+                                
+                                if (!html) {
+                                    throw new Error('All CORS proxies failed to fetch archived content');
+                                }
+                                
+                                // Build provenance metadata for Wayback
+                                const provenance = {
+                                    source_type: 'wayback_machine',
+                                    snapshot_timestamp: timestamp,
+                                    snapshot_date: waybackMeta.snapshotDate,
+                                    original_url: originalUrl,
+                                    wayback_url: `https://web.archive.org/web/${timestamp}/${originalUrl}`,
+                                    raw_wayback_url: rawWaybackUrl,
+                                    extraction_method: 'wayback-id-modifier'
+                                };
+                                
+                                // Process the archived HTML with Readability
+                                const result = await window.archiveProcessor.extractWithReadability(
+                                    html, 
+                                    '', 
+                                    originalUrl, 
+                                    'wayback-archive',
+                                    null,
+                                    provenance
+                                );
+                                
+                                // Show the preview
+                                if (result) {
+                                    showNotification('✅ Archived content from ' + waybackMeta.snapshotDate + ' extracted!', 3000);
+                                    showPreview(result.content, result.title, originalUrl);
+                                }
+                                
+                            } catch (error) {
+                                console.error('❌ Wayback extraction failed:', error);
+                                showNotification('❌ Failed to fetch archived content: ' + error.message, 5000);
+                                
+                                // Fallback: Show instructions to use bookmarklet on the raw URL
+                                const fallbackMsg = `Could not fetch archived content automatically. Try visiting the Wayback snapshot and using the bookmarklet there.`;
+                                alert(fallbackMsg);
                             }
-                        }, 500);
+                        })();
+                        
+                        return;
+                    } else {
+                        console.warn('⚠️ Could not parse Wayback URL format:', decodedUrl);
+                        showNotification('⚠️ Invalid Wayback URL format', 3000);
                     }
                     return;
                 }
