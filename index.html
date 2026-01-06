@@ -6429,6 +6429,16 @@ if (typeof module === "object") {
                     return await this.processWikipediaUrl(wikiMatch[1], wikiMatch[2]);
                 }
                 
+                // Detect YouTube URL
+                const youtubeRegex = /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/i;
+                const youtubeMatch = input.match(youtubeRegex);
+                
+                if (youtubeMatch) {
+                    console.log('🎬 Detected YouTube URL:', youtubeMatch[0]);
+                    if (progressCallback) progressCallback('Extracting video subtitles...');
+                    return await this.processYouTubeUrl(input, youtubeMatch[1]);
+                }
+                
                 // Detect URL
                 if (input.startsWith('http://') || input.startsWith('https://')) {
                     console.log('🌐 Detected general URL:', input);
@@ -6489,6 +6499,236 @@ if (typeof module === "object") {
                     console.error('❌ Wikipedia extraction failed:', error);
                     throw new Error(`Wikipedia extraction failed: ${error.message}`);
                 }
+            }
+            
+            /**
+             * 🎬 YouTube subtitle extraction
+             * Extracts video transcripts from YouTube captions/subtitles
+             * Works 100% client-side using CORS proxies
+             */
+            async processYouTubeUrl(url, videoId) {
+                console.log(`🎬 Extracting YouTube subtitles for video: ${videoId}`);
+                const progress = this.progressCallback;
+                
+                try {
+                    // Step 1: Fetch YouTube page to extract caption URLs
+                    if (progress) progress('Fetching video page...');
+                    
+                    let pageHtml = null;
+                    const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                    
+                    // Try CORS proxies to fetch the YouTube page
+                    for (let i = 0; i < CORS_PROXIES.length; i++) {
+                        try {
+                            const proxyUrl = CORS_PROXIES[i] + encodeURIComponent(videoPageUrl);
+                            console.log(`  📡 Trying CORS proxy ${i + 1}/${CORS_PROXIES.length}...`);
+                            if (progress) progress(`Trying proxy ${i + 1}/${CORS_PROXIES.length}...`);
+                            
+                            const response = await fetch(proxyUrl, { signal: this.abortSignal });
+                            if (response.ok) {
+                                pageHtml = await response.text();
+                                console.log(`  ✅ Fetched YouTube page: ${pageHtml.length} characters`);
+                                break;
+                            }
+                        } catch (e) {
+                            console.warn(`  ⚠️ Proxy ${i + 1} failed:`, e.message);
+                        }
+                    }
+                    
+                    if (!pageHtml) {
+                        throw new Error('Could not fetch YouTube page through CORS proxies');
+                    }
+                    
+                    // Step 2: Extract video title
+                    const titleMatch = pageHtml.match(/<title>([^<]+)<\/title>/);
+                    let videoTitle = titleMatch ? titleMatch[1].replace(' - YouTube', '').trim() : `YouTube Video ${videoId}`;
+                    console.log(`  📺 Video title: ${videoTitle}`);
+                    
+                    // Step 3: Extract caption tracks from page
+                    if (progress) progress('Extracting subtitle URLs...');
+                    const captionMatch = pageHtml.match(/"captionTracks":(\[.*?\])/);
+                    
+                    if (!captionMatch) {
+                        // Check if video has no captions
+                        if (pageHtml.includes('"captions":{}') || !pageHtml.includes('captionTracks')) {
+                            throw new Error('This video has no captions/subtitles available');
+                        }
+                        throw new Error('Could not extract caption data from video page');
+                    }
+                    
+                    let captionTracks;
+                    try {
+                        // Clean up JSON - handle escaped characters
+                        const cleanJson = captionMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+                        captionTracks = JSON.parse(cleanJson);
+                    } catch (e) {
+                        throw new Error('Could not parse caption track data');
+                    }
+                    
+                    console.log(`  🎯 Found ${captionTracks.length} caption tracks`);
+                    
+                    // Step 4: Find English captions (prefer manual over auto-generated)
+                    let captionUrl = null;
+                    let captionLang = null;
+                    
+                    // Priority: English manual > English auto > any manual > any auto
+                    const priorities = [
+                        { lang: 'en', kind: '' },       // English manual
+                        { lang: 'en-US', kind: '' },
+                        { lang: 'en-GB', kind: '' },
+                        { lang: 'en', kind: 'asr' },    // English auto
+                        { lang: null, kind: '' },       // Any manual
+                        { lang: null, kind: 'asr' }     // Any auto
+                    ];
+                    
+                    for (const prio of priorities) {
+                        const track = captionTracks.find(t => {
+                            const matchesLang = prio.lang === null || t.languageCode === prio.lang;
+                            const matchesKind = prio.kind === '' ? (!t.kind || t.kind !== 'asr') : t.kind === 'asr';
+                            return matchesLang && matchesKind && t.baseUrl;
+                        });
+                        
+                        if (track) {
+                            captionUrl = track.baseUrl.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+                            captionLang = track.languageCode;
+                            console.log(`  ✅ Selected caption track: ${track.languageCode} (${track.kind || 'manual'})`);
+                            break;
+                        }
+                    }
+                    
+                    if (!captionUrl) {
+                        throw new Error('No suitable caption track found');
+                    }
+                    
+                    // Step 5: Fetch subtitle content
+                    if (progress) progress('Downloading subtitles...');
+                    let subtitleContent = null;
+                    
+                    for (let i = 0; i < CORS_PROXIES.length; i++) {
+                        try {
+                            const proxyUrl = CORS_PROXIES[i] + encodeURIComponent(captionUrl);
+                            console.log(`  📡 Fetching subtitles via proxy ${i + 1}...`);
+                            
+                            const response = await fetch(proxyUrl, { signal: this.abortSignal });
+                            if (response.ok) {
+                                subtitleContent = await response.text();
+                                console.log(`  ✅ Fetched subtitles: ${subtitleContent.length} characters`);
+                                break;
+                            }
+                        } catch (e) {
+                            console.warn(`  ⚠️ Subtitle fetch failed:`, e.message);
+                        }
+                    }
+                    
+                    if (!subtitleContent) {
+                        throw new Error('Could not fetch subtitle content');
+                    }
+                    
+                    // Step 6: Clean and format subtitles
+                    if (progress) progress('Processing transcript...');
+                    const transcript = this.cleanYouTubeSubtitles(subtitleContent);
+                    
+                    if (!transcript || transcript.split(/\s+/).length < 10) {
+                        throw new Error('Extracted transcript is too short or empty');
+                    }
+                    
+                    const wordCount = transcript.split(/\s+/).length;
+                    console.log(`  ✅ Extracted transcript: ${wordCount} words`);
+                    
+                    // Step 7: Build archive data
+                    const htmlContent = `<h1>${this.escapeHtml(videoTitle)}</h1>
+                        <p><em>YouTube Video Transcript</em></p>
+                        <p><strong>Source:</strong> <a href="${url}">${url}</a></p>
+                        <p><strong>Language:</strong> ${captionLang || 'Unknown'}</p>
+                        <hr>
+                        <div class="transcript">${transcript.split('\n\n').map(p => `<p>${this.escapeHtml(p)}</p>`).join('')}</div>`;
+                    
+                    // Build provenance metadata
+                    const provenance = {
+                        source_type: 'youtube',
+                        video_id: videoId,
+                        caption_language: captionLang,
+                        extraction_method: 'youtube-captions',
+                        api_timestamp: new Date().toISOString()
+                    };
+                    
+                    return await this.extractWithReadability(htmlContent, videoTitle, url, 'youtube-captions', null, provenance);
+                    
+                } catch (error) {
+                    console.error('❌ YouTube extraction failed:', error);
+                    throw new Error(`YouTube extraction failed: ${error.message}`);
+                }
+            }
+            
+            /**
+             * Clean YouTube subtitle content (VTT/XML format)
+             * Removes timestamps, duplicates, and formatting
+             */
+            cleanYouTubeSubtitles(content) {
+                let lines = [];
+                
+                // Handle XML format (YouTube's default)
+                if (content.includes('<?xml') || content.includes('<text')) {
+                    const textMatches = content.matchAll(/<text[^>]*>([^<]*)<\/text>/g);
+                    for (const match of textMatches) {
+                        let text = match[1]
+                            .replace(/&amp;/g, '&')
+                            .replace(/&lt;/g, '<')
+                            .replace(/&gt;/g, '>')
+                            .replace(/&quot;/g, '"')
+                            .replace(/&#39;/g, "'")
+                            .replace(/\n/g, ' ')
+                            .trim();
+                        if (text) lines.push(text);
+                    }
+                }
+                // Handle VTT/SRT format
+                else {
+                    const textLines = content.split('\n');
+                    for (const line of textLines) {
+                        // Skip timestamps, WebVTT headers, and empty lines
+                        if (line.match(/^\d{2}:\d{2}/) || 
+                            line.match(/^WEBVTT/) ||
+                            line.match(/^Kind:/) ||
+                            line.match(/^Language:/) ||
+                            line.match(/^\d+$/) ||
+                            !line.trim()) {
+                            continue;
+                        }
+                        // Clean formatting tags
+                        const cleanLine = line
+                            .replace(/<[^>]+>/g, '')
+                            .replace(/\[.*?\]/g, '')
+                            .trim();
+                        if (cleanLine) lines.push(cleanLine);
+                    }
+                }
+                
+                // Remove consecutive duplicates and join
+                const uniqueLines = [];
+                for (const line of lines) {
+                    if (uniqueLines.length === 0 || uniqueLines[uniqueLines.length - 1] !== line) {
+                        uniqueLines.push(line);
+                    }
+                }
+                
+                // Group into paragraphs (every ~5 lines)
+                const paragraphs = [];
+                for (let i = 0; i < uniqueLines.length; i += 5) {
+                    const chunk = uniqueLines.slice(i, i + 5).join(' ');
+                    paragraphs.push(chunk);
+                }
+                
+                return paragraphs.join('\n\n');
+            }
+            
+            /**
+             * HTML escape helper
+             */
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
             }
             
             /**
