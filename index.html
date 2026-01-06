@@ -6319,6 +6319,37 @@ if (typeof module === "object") {
                         };
                     }
                     
+                    // Handle YouTube URL - use transcript extraction instead of page HTML
+                    const youtubeRegex = /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/i;
+                    const youtubeMatch = data.url.match(youtubeRegex);
+                    
+                    if (youtubeMatch) {
+                        console.log('🎬 YouTube detected from bookmarklet - using transcript extraction');
+                        const videoId = youtubeMatch[1];
+                        
+                        try {
+                            showNotification('🎬 Extracting YouTube transcript...');
+                            
+                            // Use YouTube processor instead of HTML
+                            const result = await processor.processYouTubeUrl(data.url, videoId);
+                            
+                            if (result && result.content) {
+                                // Show preview
+                                processor.currentData = result;
+                                showPreview(result);
+                                showNotification('✅ Transcript extracted successfully!');
+                            } else {
+                                throw new Error('No transcript content');
+                            }
+                        } catch (ytError) {
+                            console.error('❌ YouTube extraction failed:', ytError);
+                            showNotification('⚠️ Could not extract transcript: ' + ytError.message);
+                        }
+                        
+                        window._extractionInProgress = false;
+                        return; // Exit - don't process as regular HTML
+                    }
+                    
                     // IMPORTANT: Close the bookmarklet modal if it's still open
                     const modal = document.getElementById('bookmarkletModal');
                     if (modal) {
