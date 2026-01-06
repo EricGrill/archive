@@ -10207,7 +10207,8 @@ if (typeof module === "object") {
                 let tags = ['archivedcontenthaf'];  // Start with universal tag
                 
                 // Check if we have bookmarklet-extracted HTML to generate smart tags
-                const extractedHTML = window.bookmarkletExtractedHTML || document.getElementById('htmlPaste')?.value;
+                // Note: _bookmarkletExtractedHtml is set in the postMessage handler before smartArchive() is called
+                const extractedHTML = window._bookmarkletExtractedHtml || document.getElementById('htmlPaste')?.value || document.getElementById('contentInput')?.value;
                 if (extractedHTML && extractedHTML.length > 0) {
                     try {
                         console.log('🏷️ Generating smart tags from extracted content...');
