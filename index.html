@@ -5232,8 +5232,13 @@ if (typeof module === "object") {
         let timeoutHandle = null;
         
         // MOBILE FIX: Track pending operations to resume after app switch
+        // SAFETY: Ensure these are always null on fresh page load
         let pendingAuth = null;  // { username, auth_key, resolve, reject, messageHandler, timeout }
         let pendingSign = null;  // { resolve, reject, messageHandler, timeout }
+        
+        // BUGFIX: Mark page as freshly loaded - prevents ghost re-sends on first visibility change
+        let pageJustLoaded = true;
+        setTimeout(() => { pageJustLoaded = false; }, 5000); // Clear after 5 seconds
         
         /**
          * Force WebSocket reconnection (for mobile app switching)
@@ -5271,6 +5276,14 @@ if (typeof module === "object") {
         document.addEventListener('visibilitychange', async () => {
             if (document.visibilityState === 'visible') {
                 console.log('📱 App resumed - checking WebSocket connection...');
+                
+                // BUGFIX: Skip re-sends if page just loaded (prevents ghost popups)
+                if (pageJustLoaded) {
+                    console.log('🛡️ Page just loaded - skipping pending operation re-sends');
+                    pendingAuth = null;
+                    pendingSign = null;
+                    return;
+                }
                 
                 // Check WebSocket connection status
                 if (!hasWS || hasWS.readyState !== WebSocket.OPEN) {
