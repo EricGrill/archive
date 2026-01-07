@@ -11,6 +11,14 @@
  */
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DEBUG MODE CONFIGURATION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const MULTIPART_DEBUG = false;
+const mpDebugLog = (...args) => { if (MULTIPART_DEBUG) console.log(...args); };
+const mpDebugWarn = (...args) => { if (MULTIPART_DEBUG) console.warn(...args); };
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // CONSTANTS & CONFIGURATION
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -106,7 +114,7 @@ function calculateByteSize(content) {
  */
 function needsSplitting(content) {
     const size = calculateByteSize(content);
-    console.log(`📏 Content size: ${size.toLocaleString()} bytes (limit: ${SAFE_CHUNK_SIZE_BYTES.toLocaleString()})`);
+    mpDebugLog(`📏 Content size: ${size.toLocaleString()} bytes (limit: ${SAFE_CHUNK_SIZE_BYTES.toLocaleString()})`);
     return size > SAFE_CHUNK_SIZE_BYTES;
 }
 
@@ -251,8 +259,8 @@ function splitContentIntoParts(content, title = 'Untitled') {
         }];
     }
     
-    console.log(`✂️  Splitting content: "${title}"`);
-    console.log(`📏 Total size: ${calculateByteSize(content).toLocaleString()} bytes`);
+    mpDebugLog(`✂️  Splitting content: "${title}"`);
+    mpDebugLog(`📏 Total size: ${calculateByteSize(content).toLocaleString()} bytes`);
     
     const parts = [];
     let remainingContent = content;
@@ -296,7 +304,7 @@ function splitContentIntoParts(content, title = 'Untitled') {
         // If findSplitPosition returns 0 even after character fallback,
         // treat remaining content as final part to avoid infinite loop
         if (splitPos === 0) {
-            console.warn('⚠️ Zero split detected - emitting remainder as final part');
+            mpDebugWarn('⚠️ Zero split detected - emitting remainder as final part');
             parts.push({
                 partNumber: partNumber,
                 totalParts: 0,
@@ -322,7 +330,7 @@ function splitContentIntoParts(content, title = 'Untitled') {
             boundary: boundaryUsed
         });
         
-        console.log(`📄 Part ${partNumber}: ${wordCount.toLocaleString()} words, ${partSize.toLocaleString()} bytes (${boundaryUsed})`);
+        mpDebugLog(`📄 Part ${partNumber}: ${wordCount.toLocaleString()} words, ${partSize.toLocaleString()} bytes (${boundaryUsed})`);
         
         // Move to next chunk (DO NOT TRIM - preserves exact whitespace)
         remainingContent = remainingContent.substring(splitPos);
@@ -341,7 +349,7 @@ function splitContentIntoParts(content, title = 'Untitled') {
         part.totalParts = totalParts;
     });
     
-    console.log(`✅ Split complete: ${totalParts} parts created`);
+    mpDebugLog(`✅ Split complete: ${totalParts} parts created`);
     return parts;
 }
 
@@ -428,7 +436,7 @@ async function hashString(input) {
             // Pass string directly - library handles conversion internally
             blake2b = blakejs.blake2bHex(input);
         } catch (e) {
-            console.warn('⚠️  BLAKE2b hashing failed:', e.message);
+            mpDebugWarn('⚠️  BLAKE2b hashing failed:', e.message);
             blake2b = null;  // Skip BLAKE2b, rely on SHA-256 + MD5
         }
     }
@@ -468,13 +476,13 @@ async function hashMultiPartContent(contentParts) {
         throw new Error('hashMultiPartContent requires a non-empty array of content parts');
     }
     
-    console.log(`🔐 Starting dual hash generation for ${contentParts.length} parts...`);
+    mpDebugLog(`🔐 Starting dual hash generation for ${contentParts.length} parts...`);
     
     // STEP 1: Hash each part individually
     const partHashes = [];
     for (let i = 0; i < contentParts.length; i++) {
         const partContent = contentParts[i];
-        console.log(`  📝 Hashing part ${i + 1}/${contentParts.length} (${partContent.length} chars)...`);
+        mpDebugLog(`  📝 Hashing part ${i + 1}/${contentParts.length} (${partContent.length} chars)...`);
         
         const hashes = await hashString(partContent);
         partHashes.push({
@@ -484,19 +492,19 @@ async function hashMultiPartContent(contentParts) {
             md5: hashes.md5
         });
     }
-    console.log(`  ✅ Per-part hashes complete`);
+    mpDebugLog(`  ✅ Per-part hashes complete`);
     
     // STEP 2: Reassemble all parts and hash the full content
-    console.log(`  🔗 Reassembling ${contentParts.length} parts for canonical hash...`);
+    mpDebugLog(`  🔗 Reassembling ${contentParts.length} parts for canonical hash...`);
     const fullContent = contentParts.join('');
-    console.log(`  📊 Full content: ${fullContent.length} chars`);
+    mpDebugLog(`  📊 Full content: ${fullContent.length} chars`);
     
     const fullContentHash = await hashString(fullContent);
-    console.log(`  ✅ Full content hash complete`);
+    mpDebugLog(`  ✅ Full content hash complete`);
     
-    console.log(`🔐 Dual hash generation complete!`);
-    console.log(`  📦 Part hashes: ${partHashes.length} entries`);
-    console.log(`  🌐 Full SHA-256: ${fullContentHash.sha256.substring(0, 16)}...`);
+    mpDebugLog(`🔐 Dual hash generation complete!`);
+    mpDebugLog(`  📦 Part hashes: ${partHashes.length} entries`);
+    mpDebugLog(`  🌐 Full SHA-256: ${fullContentHash.sha256.substring(0, 16)}...`);
     
     return {
         partHashes: partHashes,
@@ -515,7 +523,7 @@ async function hashMultiPartContent(contentParts) {
  * @returns {Promise<Object>} - Verification result with details
  */
 async function verifyMultiPartContent(contentParts, expectedHashes) {
-    console.log(`🔍 Verifying multi-part content integrity...`);
+    mpDebugLog(`🔍 Verifying multi-part content integrity...`);
     
     // Generate hashes for the provided content
     const actualHashes = await hashMultiPartContent(contentParts);
@@ -600,7 +608,7 @@ async function verifyMultiPartContent(contentParts, expectedHashes) {
     };
     
     if (result.valid) {
-        console.log(`  ✅ All hashes verified! Content is authentic.`);
+        mpDebugLog(`  ✅ All hashes verified! Content is authentic.`);
     } else {
         console.warn(`  ❌ Hash verification failed!`);
         if (!allPartsValid) {
@@ -687,7 +695,7 @@ function generateSeriesTag(series_id) {
     // Generate tag: SERIES + uppercase hex char
     const tag = 'SERIES' + firstChar.toUpperCase();
     
-    console.log(`🏷️  Generated series tag: ${tag} (from series_id: ${series_id.substring(0, 8)}...)`);
+    mpDebugLog(`🏷️  Generated series tag: ${tag} (from series_id: ${series_id.substring(0, 8)}...)`);
     
     return tag;
 }
@@ -903,7 +911,7 @@ function extractManifestFromPost(post) {
         
         return null;
     } catch (error) {
-        console.warn('⚠️  Failed to extract manifest:', error);
+        mpDebugWarn('⚠️  Failed to extract manifest:', error);
         return null;
     }
 }
@@ -1059,7 +1067,7 @@ function validateManifest(manifest) {
  * @returns {Promise<Object>} - Verification results
  */
 async function verifyCompletedParts(manifest, partHashes, progressCallback = null) {
-    console.log(`🔍 Verifying ${manifest.parts.length} parts on blockchain...`);
+    mpDebugLog(`🔍 Verifying ${manifest.parts.length} parts on blockchain...`);
     
     const results = {
         verified: [],
@@ -1075,7 +1083,7 @@ async function verifyCompletedParts(manifest, partHashes, progressCallback = nul
         // Skip parts that are not marked as posted
         if (part.status !== 'posted') {
             results.missing.push(partNumber);
-            console.log(`  ⏭️  Part ${partNumber}: Not posted yet - will skip`);
+            mpDebugLog(`  ⏭️  Part ${partNumber}: Not posted yet - will skip`);
             continue;
         }
         
@@ -1093,7 +1101,7 @@ async function verifyCompletedParts(manifest, partHashes, progressCallback = nul
         
         try {
             // Fetch post from blockchain
-            console.log(`  📡 Fetching part ${partNumber}: @${part.author}/${part.permlink}`);
+            mpDebugLog(`  📡 Fetching part ${partNumber}: @${part.author}/${part.permlink}`);
             
             const post = await window.getHiveContent(part.author, part.permlink);
             
@@ -1139,7 +1147,7 @@ async function verifyCompletedParts(manifest, partHashes, progressCallback = nul
             
             // Part verified successfully!
             results.verified.push(partNumber);
-            console.log(`  ✅ Part ${partNumber}: Verified on blockchain`);
+            mpDebugLog(`  ✅ Part ${partNumber}: Verified on blockchain`);
             
             if (progressCallback) {
                 progressCallback({
@@ -1164,10 +1172,10 @@ async function verifyCompletedParts(manifest, partHashes, progressCallback = nul
         }
     }
     
-    console.log(`🔍 Verification complete:`);
-    console.log(`   ✅ Verified: ${results.verified.length} parts`);
-    console.log(`   ❌ Failed: ${results.failed.length} parts`);
-    console.log(`   ⏳ Missing: ${results.missing.length} parts`);
+    mpDebugLog(`🔍 Verification complete:`);
+    mpDebugLog(`   ✅ Verified: ${results.verified.length} parts`);
+    mpDebugLog(`   ❌ Failed: ${results.failed.length} parts`);
+    mpDebugLog(`   ⏳ Missing: ${results.missing.length} parts`);
     
     return results;
 }
@@ -1351,15 +1359,15 @@ class HivePostingPipeline {
         this.maxAttempts = RETRY_CONFIG.maxAttempts;
         this.backoffDelays = RETRY_CONFIG.backoffDelays;
         
-        console.log(`📦 HivePostingPipeline initialized`);
-        console.log(`   Series ID: ${manifest.series_id}`);
-        console.log(`   Total parts: ${manifest.total_parts}`);
-        console.log(`   Author: ${author}`);
+        mpDebugLog(`📦 HivePostingPipeline initialized`);
+        mpDebugLog(`   Series ID: ${manifest.series_id}`);
+        mpDebugLog(`   Total parts: ${manifest.total_parts}`);
+        mpDebugLog(`   Author: ${author}`);
         
         // PHASE 9 ENHANCED: Save content parts to IndexedDB for resume capability
         this._saveContentToIndexedDB().catch(err => {
-            console.warn('⚠️  Failed to save content to IndexedDB:', err);
-            console.warn('   Resume will require re-extraction');
+            mpDebugWarn('⚠️  Failed to save content to IndexedDB:', err);
+            mpDebugWarn('   Resume will require re-extraction');
         });
     }
     
@@ -1387,7 +1395,7 @@ class HivePostingPipeline {
                 this.contentParts,
                 metadata
             );
-            console.log(`💾 Content parts saved to IndexedDB (${this.contentParts.length} parts)`);
+            mpDebugLog(`💾 Content parts saved to IndexedDB (${this.contentParts.length} parts)`);
         } catch (error) {
             // Non-critical error - pipeline can continue without IndexedDB
             throw error;
@@ -1401,7 +1409,7 @@ class HivePostingPipeline {
      * @returns {Promise<Object>} - Result object with success status and manifest
      */
     async start() {
-        console.log(`🚀 Starting posting pipeline from part ${this.currentPart}/${this.manifest.total_parts}`);
+        mpDebugLog(`🚀 Starting posting pipeline from part ${this.currentPart}/${this.manifest.total_parts}`);
         
         // Reset flags
         this.cancelled = false;
@@ -1423,7 +1431,7 @@ class HivePostingPipeline {
             while (this.currentPart <= this.manifest.total_parts) {
                 // Check for cancellation
                 if (this.cancelled) {
-                    console.log(`🛑 Pipeline cancelled at part ${this.currentPart}`);
+                    mpDebugLog(`🛑 Pipeline cancelled at part ${this.currentPart}`);
                     this._fireProgressCallback({
                         phase: PIPELINE_PHASES.CANCELLED,
                         partNumber: this.currentPart,
@@ -1474,7 +1482,7 @@ class HivePostingPipeline {
                 }
                 
                 // Part posted successfully - move to next
-                console.log(`✅ Part ${this.currentPart}/${this.manifest.total_parts} posted successfully`);
+                mpDebugLog(`✅ Part ${this.currentPart}/${this.manifest.total_parts} posted successfully`);
                 
                 // THREADED REPLIES: Add 20-second cooldown before posting next part
                 // Part 1 → Part 2 requires cooldown (Part 1 was root, Part 2 will be comment)
@@ -1484,7 +1492,7 @@ class HivePostingPipeline {
                     const nextPartNumber = this.currentPart + 1;
                     const cooldownSeconds = 20;
                     
-                    console.log(`⏱️  Hive comment cooldown: Waiting ${cooldownSeconds} seconds before posting part ${nextPartNumber}...`);
+                    mpDebugLog(`⏱️  Hive comment cooldown: Waiting ${cooldownSeconds} seconds before posting part ${nextPartNumber}...`);
                     
                     // Countdown with progress updates every 1 second for smooth progress bar
                     for (let remainingSeconds = cooldownSeconds; remainingSeconds > 0; remainingSeconds--) {
@@ -1506,17 +1514,17 @@ class HivePostingPipeline {
                         
                         // Check for cancellation during cooldown
                         if (this.cancelled) {
-                            console.log(`🛑 Cancelled during cooldown`);
+                            mpDebugLog(`🛑 Cancelled during cooldown`);
                             break;
                         }
                     }
                     
-                    console.log(`✅ Cooldown complete - ready to post part ${nextPartNumber}`);
+                    mpDebugLog(`✅ Cooldown complete - ready to post part ${nextPartNumber}`);
                 }
                 
                 // Check if cancelled during cooldown
                 if (this.cancelled) {
-                    console.log(`🛑 Pipeline cancelled during cooldown before part ${this.currentPart + 1}`);
+                    mpDebugLog(`🛑 Pipeline cancelled during cooldown before part ${this.currentPart + 1}`);
                     this._fireProgressCallback({
                         phase: PIPELINE_PHASES.CANCELLED,
                         partNumber: this.currentPart,
@@ -1540,7 +1548,7 @@ class HivePostingPipeline {
             }
             
             // All parts posted successfully!
-            console.log(`🎉 All ${this.manifest.total_parts} parts posted successfully!`);
+            mpDebugLog(`🎉 All ${this.manifest.total_parts} parts posted successfully!`);
             this._fireProgressCallback({
                 phase: PIPELINE_PHASES.SUCCESS,
                 partNumber: this.manifest.total_parts,
@@ -1584,7 +1592,7 @@ class HivePostingPipeline {
     pause() {
         if (!this.paused) {
             this.paused = true;
-            console.log(`⏸️  Pipeline paused at part ${this.currentPart}`);
+            mpDebugLog(`⏸️  Pipeline paused at part ${this.currentPart}`);
             this._saveState();
         }
     }
@@ -1596,7 +1604,7 @@ class HivePostingPipeline {
     resume() {
         if (this.paused) {
             this.paused = false;
-            console.log(`▶️  Pipeline resumed at part ${this.currentPart}`);
+            mpDebugLog(`▶️  Pipeline resumed at part ${this.currentPart}`);
             this._saveState();
         }
     }
@@ -1608,7 +1616,7 @@ class HivePostingPipeline {
     cancel() {
         if (!this.cancelled) {
             this.cancelled = true;
-            console.log(`🛑 Pipeline cancel requested`);
+            mpDebugLog(`🛑 Pipeline cancel requested`);
             this._saveState();
         }
     }
@@ -1677,7 +1685,7 @@ class HivePostingPipeline {
                 manifestSnapshot: this._getManifestSnapshot()
             });
             
-            console.log(`📤 Posting part ${partNumber}/${this.manifest.total_parts} (attempt ${attempt}/${this.maxAttempts})`);
+            mpDebugLog(`📤 Posting part ${partNumber}/${this.manifest.total_parts} (attempt ${attempt}/${this.maxAttempts})`);
             
             try {
                 // Generate post payload
@@ -1702,8 +1710,8 @@ class HivePostingPipeline {
                 if (partNumber === 1) {
                     this.rootPermlink = postResult.permlink;
                     this.manifest.root_permlink = postResult.permlink; // Task 3: Update manifest with root permlink
-                    console.log(`  🔗 Stored root permlink for threading: ${this.rootPermlink}`);
-                    console.log(`  📝 Updated manifest.root_permlink: ${this.manifest.root_permlink}`);
+                    mpDebugLog(`  🔗 Stored root permlink for threading: ${this.rootPermlink}`);
+                    mpDebugLog(`  📝 Updated manifest.root_permlink: ${this.manifest.root_permlink}`);
                 }
                 
                 // BUG FIX 1: Ensure ALL prior parts (1 to currentPart) are marked as 'posted'
@@ -1712,7 +1720,7 @@ class HivePostingPipeline {
                     const partIndex = i - 1;
                     if (this.manifest.parts[partIndex].status !== 'posted') {
                         this.manifest.parts[partIndex].status = 'posted';
-                        console.log(`  📝 Marked part ${i} as 'posted' (status correction)`);
+                        mpDebugLog(`  📝 Marked part ${i} as 'posted' (status correction)`);
                     }
                 }
                 
@@ -1720,7 +1728,7 @@ class HivePostingPipeline {
                 // Prevents stale retry counters on resume
                 if (this.attempts[partNumber]) {
                     delete this.attempts[partNumber];
-                    console.log(`  🧹 Cleared retry counter for part ${partNumber}`);
+                    mpDebugLog(`  🧹 Cleared retry counter for part ${partNumber}`);
                 }
                 
                 // Success! Fire progress callback
@@ -1735,7 +1743,7 @@ class HivePostingPipeline {
                     manifestSnapshot: this._getManifestSnapshot()
                 });
                 
-                console.log(`✅ Part ${partNumber} posted: @${postInfo.author}/${postInfo.permlink}`);
+                mpDebugLog(`✅ Part ${partNumber} posted: @${postInfo.author}/${postInfo.permlink}`);
                 
                 return {
                     success: true,
@@ -1776,12 +1784,12 @@ class HivePostingPipeline {
                 // Transient error - retry if attempts remain
                 if (attempt < this.maxAttempts) {
                     const delay = this.backoffDelays[attempt - 1] || this.backoffDelays[this.backoffDelays.length - 1];
-                    console.log(`⏳ Waiting ${delay}ms before retry...`);
+                    mpDebugLog(`⏳ Waiting ${delay}ms before retry...`);
                     await sleep(delay);
                 } else {
                     // Exhausted all retries - Phase 9: Pause instead of failing
                     console.error(`❌ Part ${partNumber} failed after ${this.maxAttempts} attempts`);
-                    console.log(`⏸️  Pausing pipeline - can be resumed later`);
+                    mpDebugLog(`⏸️  Pausing pipeline - can be resumed later`);
                     
                     // Mark as paused (preserves state for resume)
                     this.markAsPaused();
@@ -1857,12 +1865,12 @@ class HivePostingPipeline {
             // Part 1: Root post (parent_author='', parent_permlink=firstTag)
             parentAuthor = '';
             parentPermlink = this.manifest.tags?.[0] || 'archive';
-            console.log(`  📝 Part 1: Posting as ROOT (parent_permlink: ${parentPermlink})`);
+            mpDebugLog(`  📝 Part 1: Posting as ROOT (parent_permlink: ${parentPermlink})`);
         } else {
             // Part 2+: Threaded reply (parent_author=username, parent_permlink=rootPermlink)
             parentAuthor = this.author;
             parentPermlink = this.rootPermlink;
-            console.log(`  💬 Part ${partNumber}: Posting as REPLY to @${parentAuthor}/${parentPermlink}`);
+            mpDebugLog(`  💬 Part ${partNumber}: Posting as REPLY to @${parentAuthor}/${parentPermlink}`);
             
             // Validation: rootPermlink must be set for parts 2+
             if (!this.rootPermlink) {
@@ -1892,7 +1900,7 @@ class HivePostingPipeline {
         try {
             this.progressCallback(progress);
         } catch (error) {
-            console.warn('⚠️  Progress callback error:', error);
+            mpDebugWarn('⚠️  Progress callback error:', error);
         }
     }
     
@@ -1940,7 +1948,7 @@ class HivePostingPipeline {
             
             // Save to localStorage (backward compatibility)
             localStorage.setItem(stateKey, JSON.stringify(state));
-            console.log(`💾 State saved to localStorage: ${stateKey}`);
+            mpDebugLog(`💾 State saved to localStorage: ${stateKey}`);
             
             // Save to IndexedDB (enhanced with content reference)
             if (window.ArcHiveStorage) {
@@ -1948,15 +1956,15 @@ class HivePostingPipeline {
                     this.manifest.series_id,
                     state
                 ).catch(err => {
-                    console.warn('⚠️  Failed to save to IndexedDB, continuing with localStorage only:', err);
+                    mpDebugWarn('⚠️  Failed to save to IndexedDB, continuing with localStorage only:', err);
                 });
             }
             
             if (this.rootPermlink) {
-                console.log(`   🔗 Root permlink saved: ${this.rootPermlink}`);
+                mpDebugLog(`   🔗 Root permlink saved: ${this.rootPermlink}`);
             }
         } catch (error) {
-            console.warn('⚠️  Failed to save state to localStorage:', error);
+            mpDebugWarn('⚠️  Failed to save state to localStorage:', error);
         }
     }
     
@@ -1986,7 +1994,7 @@ class HivePostingPipeline {
     markAsPaused() {
         this.paused = true;
         this._saveState();
-        console.log(`⏸️  Pipeline marked as paused (can be resumed later)`);
+        mpDebugLog(`⏸️  Pipeline marked as paused (can be resumed later)`);
     }
     
     /**
@@ -2001,16 +2009,16 @@ class HivePostingPipeline {
             
             // Clear localStorage
             localStorage.removeItem(stateKey);
-            console.log(`🗑️  State cleared from localStorage: ${stateKey}`);
+            mpDebugLog(`🗑️  State cleared from localStorage: ${stateKey}`);
             
             // Clear IndexedDB (both content and state)
             if (window.ArcHiveStorage) {
                 await window.ArcHiveStorage.deletePipelineState(this.manifest.series_id);
                 await window.ArcHiveStorage.deleteContentParts(this.manifest.series_id);
-                console.log(`🗑️  Content and state cleared from IndexedDB`);
+                mpDebugLog(`🗑️  Content and state cleared from IndexedDB`);
             }
         } catch (error) {
-            console.warn('⚠️  Failed to clear state:', error);
+            mpDebugWarn('⚠️  Failed to clear state:', error);
         }
     }
     
@@ -2025,7 +2033,7 @@ class HivePostingPipeline {
             throw new Error('restoreState requires a valid state object');
         }
         
-        console.log(`🔄 Restoring pipeline state...`);
+        mpDebugLog(`🔄 Restoring pipeline state...`);
         
         // Restore core state
         this.currentPart = state.currentPart || 1;
@@ -2040,10 +2048,10 @@ class HivePostingPipeline {
             this.manifest = state.manifest;
         }
         
-        console.log(`   ✅ State restored`);
-        console.log(`   Current part: ${this.currentPart}/${this.manifest.total_parts}`);
+        mpDebugLog(`   ✅ State restored`);
+        mpDebugLog(`   Current part: ${this.currentPart}/${this.manifest.total_parts}`);
         if (this.rootPermlink) {
-            console.log(`   🔗 Root permlink restored: ${this.rootPermlink}`);
+            mpDebugLog(`   🔗 Root permlink restored: ${this.rootPermlink}`);
         }
     }
     
@@ -2064,16 +2072,16 @@ class HivePostingPipeline {
             }
             
             const state = JSON.parse(stateJson);
-            console.log(`📂 State loaded from localStorage: ${stateKey}`);
-            console.log(`   Saved at: ${state.savedAt}`);
-            console.log(`   Current part: ${state.currentPart}/${state.manifest.total_parts}`);
+            mpDebugLog(`📂 State loaded from localStorage: ${stateKey}`);
+            mpDebugLog(`   Saved at: ${state.savedAt}`);
+            mpDebugLog(`   Current part: ${state.currentPart}/${state.manifest.total_parts}`);
             if (state.rootPermlink) {
-                console.log(`   🔗 Root permlink: ${state.rootPermlink}`);
+                mpDebugLog(`   🔗 Root permlink: ${state.rootPermlink}`);
             }
             
             return state;
         } catch (error) {
-            console.warn('⚠️  Failed to load state from localStorage:', error);
+            mpDebugWarn('⚠️  Failed to load state from localStorage:', error);
             return null;
         }
     }
@@ -2091,7 +2099,7 @@ class HivePostingPipeline {
         const state = HivePostingPipeline.loadState(seriesId);
         
         if (!state) {
-            console.log(`❌ No saved state found for series: ${seriesId}`);
+            mpDebugLog(`❌ No saved state found for series: ${seriesId}`);
             return null;
         }
         
@@ -2100,9 +2108,9 @@ class HivePostingPipeline {
         // This is a limitation - user must provide content parts to resume
         // Phase 9 will address this with content reconstruction
         
-        console.log(`🔄 Resuming pipeline from saved state...`);
-        console.log(`   Series: ${seriesId}`);
-        console.log(`   Progress: ${state.currentPart - 1}/${state.manifest.total_parts} parts posted`);
+        mpDebugLog(`🔄 Resuming pipeline from saved state...`);
+        mpDebugLog(`   Series: ${seriesId}`);
+        mpDebugLog(`   Progress: ${state.currentPart - 1}/${state.manifest.total_parts} parts posted`);
         
         // For now, return the state object - caller must create pipeline with content
         return state;
@@ -2169,8 +2177,8 @@ if (typeof window !== 'undefined') {
         }
     };
     
-    console.log('✅ ArcHive Multi-Part module loaded successfully (Phase 9)');
-    console.log('   Available as: window.ArcHiveMultiPart');
-    console.log('   Functions:', Object.keys(window.ArcHiveMultiPart).length);
-    console.log('   Phase 9: Resume Capability ready');
+    mpDebugLog('✅ ArcHive Multi-Part module loaded successfully (Phase 9)');
+    mpDebugLog('   Available as: window.ArcHiveMultiPart');
+    mpDebugLog('   Functions:', Object.keys(window.ArcHiveMultiPart).length);
+    mpDebugLog('   Phase 9: Resume Capability ready');
 }
