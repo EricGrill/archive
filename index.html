@@ -6367,7 +6367,28 @@ if (typeof module === "object") {
                             }
                         } catch (ytError) {
                             console.error('❌ YouTube extraction failed:', ytError);
-                            showNotification('⚠️ Could not extract transcript: ' + ytError.message);
+                            
+                            // Show fallback modal with options
+                            showModal(`
+                                <div style="padding: var(--spacing-xl); text-align: center;">
+                                    <div style="font-size: 48px; margin-bottom: var(--spacing-md);">🎬</div>
+                                    <h2 style="margin-bottom: var(--spacing-md); color: var(--text-primary);">Transcript Unavailable</h2>
+                                    <p style="color: var(--text-secondary); margin-bottom: var(--spacing-sm);">
+                                        <strong>${ytError.message}</strong>
+                                    </p>
+                                    <p style="color: var(--text-tertiary); font-size: 0.9rem; margin-bottom: var(--spacing-lg);">
+                                        This video may not have captions, or they may be restricted. You can archive the video metadata (title, description) instead, or try a different video.
+                                    </p>
+                                    <div class="btn-group" style="gap: 10px;">
+                                        <button class="btn btn-primary" onclick="closeModal(); archiveYouTubeMetadata('${data.url}', '${videoId}');" style="min-height: var(--touch-target);">
+                                            📝 Archive Video Info
+                                        </button>
+                                        <button class="btn" onclick="closeModal();" style="background: rgba(100, 116, 139, 0.1); color: var(--text-secondary); min-height: var(--touch-target);">
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            `);
                         }
                         
                         window._extractionInProgress = false;
@@ -6581,14 +6602,102 @@ if (typeof module === "object") {
                 debugLog(`🎬 Extracting YouTube subtitles for video: ${videoId}`);
                 const progress = this.progressCallback;
                 
+                // Helper: Create fetch with timeout
+                const fetchWithTimeout = async (url, options = {}, timeoutMs = 15000) => {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+                    
+                    try {
+                        const response = await fetch(url, {
+                            ...options,
+                            signal: this.abortSignal || controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        return response;
+                    } catch (e) {
+                        clearTimeout(timeoutId);
+                        throw e;
+                    }
+                };
+                
+                // Helper: Extract JSON object with proper boundary matching
+                const extractJsonObject = (text, startMarker) => {
+                    const startIdx = text.indexOf(startMarker);
+                    if (startIdx === -1) return null;
+                    
+                    // Find the opening brace after the marker
+                    let braceIdx = text.indexOf('{', startIdx);
+                    if (braceIdx === -1) return null;
+                    
+                    // Count braces to find matching close
+                    let depth = 0;
+                    let inString = false;
+                    let escape = false;
+                    
+                    for (let i = braceIdx; i < text.length; i++) {
+                        const char = text[i];
+                        
+                        if (escape) {
+                            escape = false;
+                            continue;
+                        }
+                        
+                        if (char === '\\' && inString) {
+                            escape = true;
+                            continue;
+                        }
+                        
+                        if (char === '"' && !escape) {
+                            inString = !inString;
+                            continue;
+                        }
+                        
+                        if (!inString) {
+                            if (char === '{') depth++;
+                            else if (char === '}') {
+                                depth--;
+                                if (depth === 0) {
+                                    return text.substring(braceIdx, i + 1);
+                                }
+                            }
+                        }
+                    }
+                    return null;
+                };
+                
+                // Helper: Parse JSON with full escape handling
+                const parseEscapedJson = (jsonStr) => {
+                    // Handle all escape sequences, not just unicode
+                    if (jsonStr.includes('\\')) {
+                        try {
+                            // Try parsing as-is first
+                            return JSON.parse(jsonStr);
+                        } catch (e) {
+                            // If it's a double-encoded string, unescape it
+                            try {
+                                const unescaped = jsonStr
+                                    .replace(/\\"/g, '"')
+                                    .replace(/\\\\/g, '\\')
+                                    .replace(/\\n/g, '\n')
+                                    .replace(/\\r/g, '\r')
+                                    .replace(/\\t/g, '\t');
+                                return JSON.parse(unescaped);
+                            } catch (e2) {
+                                throw e; // Throw original error
+                            }
+                        }
+                    }
+                    return JSON.parse(jsonStr);
+                };
+                
                 try {
                     // Step 1: Try page scrape FIRST (more reliable than Innertube via CORS proxy)
-                    // CORS proxies often don't properly forward POST requests with body
                     if (progress) progress('Fetching video data...');
                     
                     let videoData = null;
+                    let lastError = null;
                     
-                    // Primary method: Page scrape with consent bypass (GET request works better with CORS proxies)
+                    // Primary method: Page scrape with consent bypass
                     debugLog('  🔄 Trying page scrape method (primary)...');
                     const videoPageUrl = `https://www.youtube.com/watch?v=${videoId}&bpctr=9999999999&has_verified=1`;
                     
@@ -6598,38 +6707,50 @@ if (typeof module === "object") {
                             debugLog(`  📡 Trying page scrape via proxy ${i + 1}/${CORS_PROXIES.length}...`);
                             if (progress) progress(`Trying proxy ${i + 1}/${CORS_PROXIES.length}...`);
                             
-                            const response = await fetch(proxyUrl, { 
-                                signal: this.abortSignal,
+                            const response = await fetchWithTimeout(proxyUrl, {
                                 headers: {
                                     'Accept': 'text/html,application/xhtml+xml',
                                     'Accept-Language': 'en-US,en;q=0.9'
                                 }
-                            });
+                            }, 20000);
                             
                             if (response.ok) {
                                 const pageHtml = await response.text();
                                 
-                                // Try multiple patterns to extract player response
-                                const patterns = [
-                                    /var ytInitialPlayerResponse\s*=\s*(\{.+?\});/s,
-                                    /ytInitialPlayerResponse\s*=\s*(\{.+?\});/s,
-                                    /"playerResponse"\s*:\s*"(\{.+?\})"/s
+                                // Check for specific error conditions in page
+                                if (pageHtml.includes('Sign in to confirm your age') || 
+                                    pageHtml.includes('age-restricted')) {
+                                    lastError = 'AGE_RESTRICTED';
+                                }
+                                if (pageHtml.includes('Video unavailable') || 
+                                    pageHtml.includes('This video is unavailable')) {
+                                    lastError = 'UNAVAILABLE';
+                                }
+                                if (pageHtml.includes('Private video') || 
+                                    pageHtml.includes('This video is private')) {
+                                    lastError = 'PRIVATE';
+                                }
+                                if (pageHtml.includes('blocked it in your country') ||
+                                    pageHtml.includes('not available in your country')) {
+                                    lastError = 'REGION_BLOCKED';
+                                }
+                                
+                                // Try to extract player response using proper JSON boundary matching
+                                const markers = [
+                                    'var ytInitialPlayerResponse = ',
+                                    'ytInitialPlayerResponse = ',
+                                    'var ytInitialPlayerResponse='
                                 ];
                                 
-                                for (const pattern of patterns) {
-                                    const playerMatch = pageHtml.match(pattern);
-                                    if (playerMatch) {
+                                for (const marker of markers) {
+                                    const jsonStr = extractJsonObject(pageHtml, marker);
+                                    if (jsonStr) {
                                         try {
-                                            let jsonStr = playerMatch[1];
-                                            // Handle escaped JSON (from playerResponse string)
-                                            if (jsonStr.includes('\\u')) {
-                                                jsonStr = JSON.parse('"' + jsonStr + '"');
-                                            }
-                                            videoData = JSON.parse(jsonStr);
+                                            videoData = parseEscapedJson(jsonStr);
                                             debugLog(`  ✅ Extracted player data from page`);
                                             break;
                                         } catch (e) {
-                                            console.warn(`  ⚠️ Could not parse player data with pattern`);
+                                            console.warn(`  ⚠️ Could not parse player data:`, e.message);
                                         }
                                     }
                                 }
@@ -6638,20 +6759,27 @@ if (typeof module === "object") {
                             }
                         } catch (e) {
                             console.warn(`  ⚠️ Page fetch failed:`, e.message);
+                            // Add small delay between proxy attempts
+                            if (i < CORS_PROXIES.length - 1) {
+                                await new Promise(r => setTimeout(r, 500));
+                            }
                         }
                     }
                     
-                    // Fallback: Try Innertube API (POST may not work well with some CORS proxies)
+                    // Fallback: Try Innertube API
                     if (!videoData) {
                         console.log('  🔄 Page scrape failed, trying Innertube API...');
                         if (progress) progress('Trying Innertube API...');
                         
                         const innertubeApiUrl = 'https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
                         
-                        // Try multiple client types - embedded players often have fewer restrictions
+                        // Use realistic client versions (format: YYYY.MM.DD)
+                        const today = new Date();
+                        const clientVersion = `2.${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}.00.00`;
+                        
                         const clientConfigs = [
-                            { clientName: 'WEB_EMBEDDED_PLAYER', clientVersion: '2.20250101.00.00' },
-                            { clientName: 'WEB', clientVersion: '2.20250101.00.00' },
+                            { clientName: 'WEB_EMBEDDED_PLAYER', clientVersion: clientVersion },
+                            { clientName: 'WEB', clientVersion: clientVersion },
                             { clientName: 'TVHTML5_SIMPLY_EMBEDDED_PLAYER', clientVersion: '2.0' }
                         ];
                         
@@ -6674,15 +6802,28 @@ if (typeof module === "object") {
                                     const proxyUrl = CORS_PROXIES[i] + encodeURIComponent(innertubeApiUrl);
                                     debugLog(`  📡 Trying Innertube (${clientConfig.clientName}) via proxy ${i + 1}...`);
                                     
-                                    const response = await fetch(proxyUrl, {
+                                    const response = await fetchWithTimeout(proxyUrl, {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify(innertubePayload),
-                                        signal: this.abortSignal
-                                    });
+                                        body: JSON.stringify(innertubePayload)
+                                    }, 15000);
                                     
                                     if (response.ok) {
                                         const data = await response.json();
+                                        // Check for playability status errors
+                                        if (data.playabilityStatus) {
+                                            const status = data.playabilityStatus.status;
+                                            const reason = data.playabilityStatus.reason || '';
+                                            if (status === 'LOGIN_REQUIRED' && reason.includes('age')) {
+                                                lastError = 'AGE_RESTRICTED';
+                                            } else if (status === 'UNPLAYABLE') {
+                                                if (reason.includes('private')) lastError = 'PRIVATE';
+                                                else if (reason.includes('country')) lastError = 'REGION_BLOCKED';
+                                                else lastError = 'UNAVAILABLE';
+                                            } else if (status === 'LIVE_STREAM_OFFLINE') {
+                                                lastError = 'LIVE_STREAM';
+                                            }
+                                        }
                                         // Check if we got valid data with captions
                                         if (data.captions || data.videoDetails) {
                                             videoData = data;
@@ -6692,13 +6833,25 @@ if (typeof module === "object") {
                                     }
                                 } catch (e) {
                                     console.warn(`  ⚠️ Innertube ${clientConfig.clientName} proxy ${i + 1} failed:`, e.message);
+                                    // Add delay between retries
+                                    if (i < CORS_PROXIES.length - 1) {
+                                        await new Promise(r => setTimeout(r, 300));
+                                    }
                                 }
                             }
                         }
                     }
                     
+                    // Provide specific error messages based on detected error type
                     if (!videoData) {
-                        throw new Error('Could not fetch YouTube video data');
+                        const errorMessages = {
+                            'AGE_RESTRICTED': 'This video is age-restricted and requires sign-in',
+                            'PRIVATE': 'This video is private',
+                            'UNAVAILABLE': 'This video is unavailable or has been removed',
+                            'REGION_BLOCKED': 'This video is not available in your region',
+                            'LIVE_STREAM': 'Live streams do not have captions available'
+                        };
+                        throw new Error(errorMessages[lastError] || 'Could not fetch YouTube video data - all proxies failed');
                     }
                     
                     // Step 2: Extract video title
@@ -6752,7 +6905,7 @@ if (typeof module === "object") {
                             const proxyUrl = CORS_PROXIES[i] + encodeURIComponent(captionUrl);
                             debugLog(`  📡 Fetching subtitles via proxy ${i + 1}...`);
                             
-                            const response = await fetch(proxyUrl, { signal: this.abortSignal });
+                            const response = await fetchWithTimeout(proxyUrl, {}, 15000);
                             if (response.ok) {
                                 subtitleContent = await response.text();
                                 debugLog(`  ✅ Fetched subtitles: ${subtitleContent.length} characters`);
@@ -6760,6 +6913,9 @@ if (typeof module === "object") {
                             }
                         } catch (e) {
                             console.warn(`  ⚠️ Subtitle fetch failed:`, e.message);
+                            if (i < CORS_PROXIES.length - 1) {
+                                await new Promise(r => setTimeout(r, 300));
+                            }
                         }
                     }
                     
@@ -6839,15 +6995,22 @@ if (typeof module === "object") {
                 
                 // Handle XML format (YouTube's default)
                 if (content.includes('<?xml') || content.includes('<text')) {
-                    const textMatches = content.matchAll(/<text[^>]*>([^<]*)<\/text>/g);
+                    // Improved regex to handle nested tags and capture all text content
+                    const textMatches = content.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g);
                     for (const match of textMatches) {
                         let text = match[1]
+                            // Strip any nested HTML/formatting tags first
+                            .replace(/<[^>]+>/g, '')
+                            // Decode HTML entities
                             .replace(/&amp;/g, '&')
                             .replace(/&lt;/g, '<')
                             .replace(/&gt;/g, '>')
                             .replace(/&quot;/g, '"')
                             .replace(/&#39;/g, "'")
-                            .replace(/&#(\d+);/g, (m, code) => String.fromCharCode(code))
+                            .replace(/&apos;/g, "'")
+                            .replace(/&nbsp;/g, ' ')
+                            .replace(/&#(\d+);/g, (m, code) => String.fromCharCode(parseInt(code)))
+                            .replace(/&#x([0-9a-fA-F]+);/g, (m, code) => String.fromCharCode(parseInt(code, 16)))
                             .replace(/\n/g, ' ')
                             .trim();
                         if (text && text.length > 0) lines.push(text);
@@ -6857,12 +7020,16 @@ if (typeof module === "object") {
                 else {
                     const textLines = content.split('\n');
                     for (const line of textLines) {
-                        // Skip timestamps, WebVTT headers, and empty lines
-                        if (line.match(/^\d{2}:\d{2}/) || 
-                            line.match(/^WEBVTT/) ||
-                            line.match(/^Kind:/) ||
-                            line.match(/^Language:/) ||
-                            line.match(/^\d+$/) ||
+                        // Skip timestamps (multiple formats: HH:MM:SS.mmm, MM:SS.mmm, etc.)
+                        // Also skip WebVTT headers, cue IDs, and empty lines
+                        if (line.match(/^\d{1,2}:\d{2}[:\.]/) ||  // Timestamp lines
+                            line.match(/^\d+\s*$/) ||             // Cue numbers
+                            line.match(/^WEBVTT/i) ||             // WebVTT header
+                            line.match(/^Kind:/i) ||              // Metadata
+                            line.match(/^Language:/i) ||          // Metadata
+                            line.match(/^NOTE\s/i) ||             // VTT comments
+                            line.match(/^STYLE\s/i) ||            // VTT styles
+                            line.match(/-->/) ||                  // Timestamp arrows
                             !line.trim()) {
                             continue;
                         }
@@ -11198,6 +11365,75 @@ if (typeof module === "object") {
                 siteName: siteName,
                 indicators: indicators
             };
+        }
+        
+        /**
+         * Fallback: Archive YouTube video metadata when transcript unavailable
+         * Creates an archive with video title, description, and metadata
+         */
+        async function archiveYouTubeMetadata(url, videoId) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = '<div class="status status-loading"><span class="spinner"></span> Fetching video metadata...</div>';
+            
+            try {
+                // Use oEmbed API which is CORS-friendly and doesn't require proxies
+                const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+                const response = await fetch(oembedUrl);
+                
+                if (!response.ok) {
+                    throw new Error('Could not fetch video metadata');
+                }
+                
+                const oembed = await response.json();
+                
+                // Build content from available metadata
+                const content = [
+                    `Video Title: ${oembed.title}`,
+                    ``,
+                    `Author: ${oembed.author_name}`,
+                    `Channel URL: ${oembed.author_url}`,
+                    ``,
+                    `This archive contains video metadata only. The transcript was not available.`,
+                    `Video ID: ${videoId}`,
+                    `Original URL: ${url}`
+                ].join('\n');
+                
+                // Generate hashes
+                const hashes = await processor.generateHashes(content, oembed.title);
+                
+                // Build archive data
+                const archiveData = {
+                    title: oembed.title,
+                    content: content,
+                    source: url,
+                    url: url,
+                    method: 'youtube-metadata',
+                    extractionMethod: 'youtube-metadata',
+                    wordCount: content.split(/\s+/).length,
+                    imageCount: 0,
+                    images: [],
+                    hashes: hashes,
+                    provenance: {
+                        source_type: 'youtube',
+                        video_id: videoId,
+                        extraction_method: 'youtube-oembed',
+                        note: 'Transcript unavailable - metadata only',
+                        api_timestamp: new Date().toISOString()
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                
+                processor.currentData = archiveData;
+                processor.saveToHistory(archiveData);
+                
+                statusDiv.innerHTML = '<div class="status status-success">✅ Video metadata archived (no transcript available)</div>';
+                displayResults(archiveData);
+                updateHistory();
+                
+            } catch (error) {
+                console.error('❌ YouTube metadata fallback failed:', error);
+                statusDiv.innerHTML = `<div class="status status-error">❌ Could not retrieve video metadata: ${error.message}</div>`;
+            }
         }
         
         /**
