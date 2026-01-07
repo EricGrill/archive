@@ -6474,6 +6474,10 @@ if (typeof module === "object") {
                 this.progressCallback = progressCallback;
                 this.abortSignal = abortSignal;
                 
+                // Get source URL field for special handling (YouTube, Wikipedia)
+                const sourceUrlField = document.getElementById('sourceUrlInput');
+                const sourceUrl = sourceUrlField ? sourceUrlField.value.trim() : '';
+                
                 // Detect Wikipedia URL (supports 300+ languages)
                 const wikiRegex = /^https?:\/\/([a-z]{2,3})\.wikipedia\.org\/wiki\/(.+)$/i;
                 const wikiMatch = input.match(wikiRegex);
@@ -6484,14 +6488,25 @@ if (typeof module === "object") {
                     return await this.processWikipediaUrl(wikiMatch[1], wikiMatch[2]);
                 }
                 
-                // Detect YouTube URL
+                // Detect YouTube URL - check both input AND source URL field
+                // This ensures YouTube transcript extraction even when bookmarklet sends HTML
                 const youtubeRegex = /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/i;
-                const youtubeMatch = input.match(youtubeRegex);
+                let youtubeMatch = input.match(youtubeRegex);
+                
+                // Also check source URL field - YouTube page HTML should use transcript extraction
+                if (!youtubeMatch && sourceUrl) {
+                    youtubeMatch = sourceUrl.match(youtubeRegex);
+                    if (youtubeMatch) {
+                        console.log('🎬 YouTube source URL detected - using transcript extraction instead of page HTML');
+                    }
+                }
                 
                 if (youtubeMatch) {
                     console.log('🎬 Detected YouTube URL:', youtubeMatch[0]);
                     if (progressCallback) progressCallback('Extracting video subtitles...');
-                    return await this.processYouTubeUrl(input, youtubeMatch[1]);
+                    // Use source URL if available, otherwise input
+                    const urlToProcess = sourceUrl && sourceUrl.match(youtubeRegex) ? sourceUrl : input;
+                    return await this.processYouTubeUrl(urlToProcess, youtubeMatch[1]);
                 }
                 
                 // Detect URL
