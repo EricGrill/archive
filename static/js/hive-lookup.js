@@ -22,6 +22,14 @@
  */
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DEBUG MODE CONFIGURATION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const HIVE_LOOKUP_DEBUG = false;
+const hiveDebugLog = (...args) => { if (HIVE_LOOKUP_DEBUG) console.log(...args); };
+const hiveDebugWarn = (...args) => { if (HIVE_LOOKUP_DEBUG) console.warn(...args); };
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // HIVE API CONFIGURATION
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -55,7 +63,7 @@ let activeSearchId = null;
  */
 function cancelCurrentSearch() {
     if (currentSearchController) {
-        console.log('🛑 User cancelled search');
+        hiveDebugLog('🛑 User cancelled search');
         currentSearchController.abort();
         // Don't null here - let fetchHiveAPIWithFailover's finally block clean it up
     }
@@ -84,7 +92,7 @@ async function fetchHiveAPIWithFailover(params, maxRetries = 2, progressCallback
     
     // Check if another search is already in progress
     if (activeSearchId !== null && currentSearchController && !currentSearchController.signal.aborted) {
-        console.warn('⚠️  Search already in progress - rejecting concurrent request');
+        hiveDebugWarn('⚠️  Search already in progress - rejecting concurrent request');
         throw new Error('A search is already in progress. Please wait for it to complete or cancel it first.');
     }
     
@@ -116,7 +124,7 @@ async function fetchHiveAPIWithFailover(params, maxRetries = 2, progressCallback
                 
                 try {
                     const startTime = Date.now();
-                    console.log(`🔌 [${nodeIndex + 1}/${HIVE_API_NODES.length}] Trying ${apiUrl}${retry > 0 ? ` (retry ${retry})` : ''}...`);
+                    hiveDebugLog(`🔌 [${nodeIndex + 1}/${HIVE_API_NODES.length}] Trying ${apiUrl}${retry > 0 ? ` (retry ${retry})` : ''}...`);
                     
                     // Notify UI of progress
                     if (progressCallback) {
@@ -166,7 +174,7 @@ async function fetchHiveAPIWithFailover(params, maxRetries = 2, progressCallback
                             console.warn(`⚠️  Response truncated: ${data.result.length} posts → ${MAX_ITEMS} posts`);
                             data.result = data.result.slice(0, MAX_ITEMS);
                         }
-                        console.log(`✅ Success from ${apiUrl} (${duration}ms, ${data.result.length} posts)`);
+                        hiveDebugLog(`✅ Success from ${apiUrl} (${duration}ms, ${data.result.length} posts)`);
                     } else if (isObject) {
                         const itemCount = Object.keys(data.result).length;
                         if (itemCount > MAX_ITEMS) {
@@ -176,7 +184,7 @@ async function fetchHiveAPIWithFailover(params, maxRetries = 2, progressCallback
                             keys.forEach(key => truncated[key] = data.result[key]);
                             data.result = truncated;
                         }
-                        console.log(`✅ Success from ${apiUrl} (${duration}ms, ${itemCount} items)`);
+                        hiveDebugLog(`✅ Success from ${apiUrl} (${duration}ms, ${itemCount} items)`);
                     }
                     
                     return data.result;
@@ -197,7 +205,7 @@ async function fetchHiveAPIWithFailover(params, maxRetries = 2, progressCallback
                     // Exponential backoff: wait before retry (100ms, 200ms, 400ms...)
                     if (retry < maxRetries) {
                         const delay = Math.min(100 * Math.pow(2, retry), 1000);
-                        console.log(`   ⏱️  Waiting ${delay}ms before retry...`);
+                        hiveDebugLog(`   ⏱️  Waiting ${delay}ms before retry...`);
                         await new Promise(resolve => setTimeout(resolve, delay));
                     }
                 }
@@ -230,7 +238,7 @@ async function fetchHiveAPIWithFailover(params, maxRetries = 2, progressCallback
  * @returns {Promise<Array>} - Array of matching Hive posts
  */
 async function searchHiveByTags(tags, progressCallback = null, maxPages = 5) {
-    console.log('📡 Searching Hive with tags:', tags);
+    hiveDebugLog('📡 Searching Hive with tags:', tags);
     
     // CRITICAL: Hive API searches by PRIMARY tag (first tag in post's tag list)
     // ALL archives use "archivedcontenthaf" as the primary tag (position 0)
@@ -260,12 +268,12 @@ async function searchHiveByTags(tags, progressCallback = null, maxPages = 5) {
                 params.params.start_permlink = startPermlink;
             }
             
-            console.log(`🔍 Fetching page ${page + 1}/${maxPages}...`);
+            hiveDebugLog(`🔍 Fetching page ${page + 1}/${maxPages}...`);
             
             const posts = await fetchHiveAPIWithFailover(params, 2, progressCallback);
             
             if (posts.length === 0) {
-                console.log(`📭 No more posts found at page ${page + 1}`);
+                hiveDebugLog(`📭 No more posts found at page ${page + 1}`);
                 break;
             }
             
@@ -273,12 +281,12 @@ async function searchHiveByTags(tags, progressCallback = null, maxPages = 5) {
             const newPosts = page === 0 ? posts : posts.slice(1);
             
             if (newPosts.length === 0) {
-                console.log(`📭 No new posts on page ${page + 1}`);
+                hiveDebugLog(`📭 No new posts on page ${page + 1}`);
                 break;
             }
             
             allPosts.push(...newPosts);
-            console.log(`✅ Page ${page + 1}: Found ${newPosts.length} posts (total: ${allPosts.length})`);
+            hiveDebugLog(`✅ Page ${page + 1}: Found ${newPosts.length} posts (total: ${allPosts.length})`);
             
             // Set pagination cursor for next page
             const lastPost = posts[posts.length - 1];
@@ -287,12 +295,12 @@ async function searchHiveByTags(tags, progressCallback = null, maxPages = 5) {
             
             // If we got fewer than 20 posts, we've reached the end
             if (posts.length < 20) {
-                console.log(`📭 Reached end of archives at page ${page + 1}`);
+                hiveDebugLog(`📭 Reached end of archives at page ${page + 1}`);
                 break;
             }
         }
         
-        console.log(`✅ Found ${allPosts.length} total posts with primary tag: ${primaryTag}`);
+        hiveDebugLog(`✅ Found ${allPosts.length} total posts with primary tag: ${primaryTag}`);
         
         // If we have smart tags (5 tags), filter to match all of them
         const filtered = allPosts.filter(post => {
@@ -302,7 +310,7 @@ async function searchHiveByTags(tags, progressCallback = null, maxPages = 5) {
                 try {
                     metadata = JSON.parse(metadata);
                 } catch (e) {
-                    console.warn('⚠️  Failed to parse json_metadata for post:', post.post_id);
+                    hiveDebugWarn('⚠️  Failed to parse json_metadata for post:', post.post_id);
                     return false;
                 }
             }
@@ -310,7 +318,7 @@ async function searchHiveByTags(tags, progressCallback = null, maxPages = 5) {
             return tags.every(tag => postTags.includes(tag.toLowerCase()));
         });
         
-        console.log(`✅ After tag filtering: ${filtered.length} posts`);
+        hiveDebugLog(`✅ After tag filtering: ${filtered.length} posts`);
         return filtered;
         
     } catch (error) {
@@ -515,7 +523,7 @@ function computeDateTag(publicationDate, lastModified) {
     
     // Validate date
     if (isNaN(date.getTime())) {
-        console.warn('⚠️ Invalid date, using current date as fallback');
+        hiveDebugWarn('⚠️ Invalid date, using current date as fallback');
         date = new Date();
         source = 'now';
     }
@@ -529,7 +537,7 @@ function computeDateTag(publicationDate, lastModified) {
     const prefix = source === 'now' ? 'ARCHIVEnow' : 'ARCHIVE';
     const tag = `${prefix}${year}Q${quarter}`;
     
-    console.log(`📅 Date tag: ${tag} (source: ${source === 'pub' ? 'publication date' : source === 'mod' ? 'Last-Modified header' : 'current date'})`);
+    hiveDebugLog(`📅 Date tag: ${tag} (source: ${source === 'pub' ? 'publication date' : source === 'mod' ? 'Last-Modified header' : 'current date'})`);
     
     return tag;
 }
@@ -569,7 +577,7 @@ function generateArchiveTags(data) {
         computeHashPrefixTag(data.hashes.content.sha256)  // 5. Hash prefix (0-F)
     ];
     
-    console.log('🏷️ Smart tags generated (5 total):', tags);
+    hiveDebugLog('🏷️ Smart tags generated (5 total):', tags);
     
     return tags;
 }
@@ -647,7 +655,7 @@ function compareHashes(currentHashes, archivedHashes) {
     
     const allMatch = contentMatch && titleMatch && rawMatch;
     
-    console.log(`🔍 Hash comparison:`, {
+    hiveDebugLog(`🔍 Hash comparison:`, {
         content: contentMatch ? '✅ Match' : '❌ Differ',
         title: titleMatch ? '✅ Match' : '❌ Differ',
         raw: rawMatch ? '✅ Match' : '❌ Differ',
@@ -716,7 +724,7 @@ if (typeof window !== 'undefined') {
         compareHashes
     };
     
-    console.log('✅ ArcHive Hive Lookup module loaded successfully');
-    console.log('   Available as: window.ArcHiveHiveLookup');
-    console.log('   Functions:', Object.keys(window.ArcHiveHiveLookup).length);
+    hiveDebugLog('✅ ArcHive Hive Lookup module loaded successfully');
+    hiveDebugLog('   Available as: window.ArcHiveHiveLookup');
+    hiveDebugLog('   Functions:', Object.keys(window.ArcHiveHiveLookup).length);
 }
