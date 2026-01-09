@@ -6359,12 +6359,21 @@ if (typeof module === "object") {
                             console.log('   Transcript length:', data.youtubeData.transcript.length, 'chars');
                             console.log('   Caption language:', data.youtubeData.captionLang);
                             
+                            // Clean the transcript with noise filter
+                            const cleanedTranscript = processor.cleanYouTubeSubtitles(data.youtubeData.transcript);
+                            
                             // Build result directly from bookmarklet data
                             const result = {
-                                content: data.youtubeData.transcript,
+                                content: cleanedTranscript,
                                 title: data.youtubeData.title || 'YouTube Video',
                                 sourceUrl: data.url,
+                                url: data.url,
                                 type: 'youtube-transcript',
+                                method: 'youtube-captions',
+                                extractionMethod: 'youtube-captions',
+                                wordCount: cleanedTranscript.split(/\s+/).filter(w => w.length > 0).length,
+                                imageCount: 0,
+                                images: [],
                                 metadata: {
                                     videoId: data.youtubeData.videoId,
                                     author: data.youtubeData.author,
@@ -6373,8 +6382,18 @@ if (typeof module === "object") {
                                 }
                             };
                             
-                            // Show preview
+                            // IMPORTANT: Store the result for processContent to use later
+                            // This prevents processContent from trying CORS proxies
+                            window._youtubeBookmarkletData = result;
+                            
+                            // Generate hashes
+                            const hashes = await processor.generateHashes(cleanedTranscript, result.title);
+                            result.hashes = hashes;
+                            
+                            // Store in processor
                             processor.currentData = result;
+                            
+                            // Show preview
                             showPreview(result);
                             showNotification('✅ Transcript extracted successfully!');
                             
@@ -6382,46 +6401,28 @@ if (typeof module === "object") {
                             return; // Exit - transcript handled
                         }
                         
-                        // Fall back to CORS proxy method (for direct URL input, not bookmarklet)
-                        try {
-                            showNotification('🎬 Extracting YouTube transcript...');
-                            
-                            // Use YouTube processor instead of HTML
-                            const result = await processor.processYouTubeUrl(data.url, videoId);
-                            
-                            if (result && result.content) {
-                                // Show preview
-                                processor.currentData = result;
-                                showPreview(result);
-                                showNotification('✅ Transcript extracted successfully!');
-                            } else {
-                                throw new Error('No transcript content');
-                            }
-                        } catch (ytError) {
-                            console.error('❌ YouTube extraction failed:', ytError);
-                            
-                            // Show fallback modal with options
-                            showModal(`
-                                <div style="padding: var(--spacing-xl); text-align: center;">
-                                    <div style="font-size: 48px; margin-bottom: var(--spacing-md);">🎬</div>
-                                    <h2 style="margin-bottom: var(--spacing-md); color: var(--text-primary);">Transcript Unavailable</h2>
-                                    <p style="color: var(--text-secondary); margin-bottom: var(--spacing-sm);">
-                                        <strong>${ytError.message}</strong>
-                                    </p>
-                                    <p style="color: var(--text-tertiary); font-size: 0.9rem; margin-bottom: var(--spacing-lg);">
-                                        This video may not have captions, or they may be restricted. You can archive the video metadata (title, description) instead, or try a different video.
-                                    </p>
-                                    <div class="btn-group" style="gap: 10px;">
-                                        <button class="btn btn-primary" onclick="closeModal(); archiveYouTubeMetadata('${data.url}', '${videoId}');" style="min-height: var(--touch-target);">
-                                            📝 Archive Video Info
-                                        </button>
-                                        <button class="btn" onclick="closeModal();" style="background: rgba(100, 116, 139, 0.1); color: var(--text-secondary); min-height: var(--touch-target);">
-                                            Cancel
-                                        </button>
-                                    </div>
+                        // No bookmarklet transcript - show error (CORS proxies removed)
+                        console.error('❌ YouTube: No transcript from bookmarklet');
+                        showModal(`
+                            <div style="padding: var(--spacing-xl); text-align: center;">
+                                <div style="font-size: 48px; margin-bottom: var(--spacing-md);">🎬</div>
+                                <h2 style="margin-bottom: var(--spacing-md); color: var(--text-primary);">Transcript Not Available</h2>
+                                <p style="color: var(--text-secondary); margin-bottom: var(--spacing-sm);">
+                                    <strong>This video doesn't have captions available.</strong>
+                                </p>
+                                <p style="color: var(--text-tertiary); font-size: 0.9rem; margin-bottom: var(--spacing-lg);">
+                                    The bookmarklet couldn't extract captions from this video. It may be age-restricted, private, or simply doesn't have captions enabled.
+                                </p>
+                                <div class="btn-group" style="gap: 10px;">
+                                    <button class="btn btn-primary" onclick="closeModal(); archiveYouTubeMetadata('${data.url}', '${videoId}');" style="min-height: var(--touch-target);">
+                                        📝 Archive Video Info Instead
+                                    </button>
+                                    <button class="btn" onclick="closeModal();" style="background: rgba(100, 116, 139, 0.1); color: var(--text-secondary); min-height: var(--touch-target);">
+                                        Cancel
+                                    </button>
                                 </div>
-                            `);
-                        }
+                            </div>
+                        `);
                         
                         window._extractionInProgress = false;
                         return; // Exit - don't process as regular HTML
@@ -6542,24 +6543,31 @@ if (typeof module === "object") {
                 }
                 
                 // Detect YouTube URL - check both input AND source URL field
-                // This ensures YouTube transcript extraction even when bookmarklet sends HTML
                 const youtubeRegex = /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/i;
                 let youtubeMatch = input.match(youtubeRegex);
                 
                 // Also check source URL field - YouTube page HTML should use transcript extraction
                 if (!youtubeMatch && sourceUrl) {
                     youtubeMatch = sourceUrl.match(youtubeRegex);
-                    if (youtubeMatch) {
-                        console.log('🎬 YouTube source URL detected - using transcript extraction instead of page HTML');
-                    }
                 }
                 
                 if (youtubeMatch) {
-                    console.log('🎬 Detected YouTube URL:', youtubeMatch[0]);
-                    if (progressCallback) progressCallback('Extracting video subtitles...');
-                    // Use source URL if available, otherwise input
-                    const urlToProcess = sourceUrl && sourceUrl.match(youtubeRegex) ? sourceUrl : input;
-                    return await this.processYouTubeUrl(urlToProcess, youtubeMatch[1]);
+                    // CHECK: Do we already have bookmarklet-extracted YouTube data?
+                    // This is the PRIMARY method - no CORS proxies needed!
+                    if (window._youtubeBookmarkletData && window._youtubeBookmarkletData.content) {
+                        console.log('🎬 Using stored YouTube transcript from bookmarklet (no CORS needed)');
+                        const result = window._youtubeBookmarkletData;
+                        
+                        // Clear stored data after use
+                        window._youtubeBookmarkletData = null;
+                        
+                        return result;
+                    }
+                    
+                    // No bookmarklet data - this means user pasted URL directly (Android Direct URL mode)
+                    // Show helpful message instead of trying broken CORS proxies
+                    console.log('🎬 YouTube URL without bookmarklet data - prompting for bookmarklet use');
+                    throw new Error('YouTube videos require the bookmarklet. Please use the ArcHive bookmarklet directly on the YouTube video page for best results.');
                 }
                 
                 // Detect URL
@@ -7019,14 +7027,23 @@ if (typeof module === "object") {
             }
             
             /**
-             * Clean YouTube subtitle content (VTT/XML format)
-             * Removes timestamps, duplicates, and formats into natural paragraphs
+             * Clean YouTube subtitle content (VTT/XML format or plain text)
+             * Removes timestamps, duplicates, stage directions, and formats into natural paragraphs
+             * Also filters noise like [Music], speaker labels, and UI artifacts
              */
             cleanYouTubeSubtitles(content) {
+                // If content is already plain text (from bookmarklet), process it directly
+                const isPlainText = !content.includes('<?xml') && !content.includes('<text') && 
+                                    !content.includes('WEBVTT') && !content.includes('-->');
+                
                 let lines = [];
                 
+                if (isPlainText) {
+                    // Content from bookmarklet is already mostly clean - just split into segments
+                    lines = content.split(/\s{2,}|\n/).map(s => s.trim()).filter(s => s.length > 0);
+                }
                 // Handle XML format (YouTube's default)
-                if (content.includes('<?xml') || content.includes('<text')) {
+                else if (content.includes('<?xml') || content.includes('<text')) {
                     // Improved regex to handle nested tags and capture all text content
                     const textMatches = content.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g);
                     for (const match of textMatches) {
@@ -7074,6 +7091,40 @@ if (typeof module === "object") {
                     }
                 }
                 
+                // NOISE FILTER: Remove bracketed stage directions and non-speech content
+                const stageDirections = [
+                    /^\[.*?\]$/,           // Lines that are ONLY bracketed content: [Music], [Applause]
+                    /^\(.*?\)$/,           // Lines that are ONLY parenthesized: (laughing), (music)
+                    /^♪.*♪$/,              // Music notes
+                    /^🎵.*$/,              // Music emoji lines
+                    /^🎶.*$/,              // Music emoji lines
+                ];
+                
+                // Remove stage directions from within text (inline)
+                lines = lines.map(line => {
+                    return line
+                        .replace(/\[Music\]/gi, '')
+                        .replace(/\[Applause\]/gi, '')
+                        .replace(/\[Laughter\]/gi, '')
+                        .replace(/\[Cheering\]/gi, '')
+                        .replace(/\[Silence\]/gi, '')
+                        .replace(/\[Inaudible\]/gi, '')
+                        .replace(/\[Crosstalk\]/gi, '')
+                        .replace(/\[Background noise\]/gi, '')
+                        .replace(/\[Foreign\]/gi, '')
+                        .replace(/\[.*?music.*?\]/gi, '')
+                        .replace(/\[.*?applause.*?\]/gi, '')
+                        .replace(/\[.*?laughter.*?\]/gi, '')
+                        .replace(/♪[^♪]*♪/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+                }).filter(line => line.length > 0);
+                
+                // Filter out lines that are ONLY stage directions
+                lines = lines.filter(line => {
+                    return !stageDirections.some(pattern => pattern.test(line.trim()));
+                });
+                
                 // Filter out YouTube UI artifacts that might slip through
                 const uiPatterns = [
                     /^Comments?$/i,
@@ -7087,7 +7138,19 @@ if (typeof module === "object") {
                     /^Show more$/i,
                     /^Show less$/i,
                     /^Reply$/i,
-                    /^Like$/i
+                    /^Like$/i,
+                    /^Dislike$/i,
+                    /^Clip$/i,
+                    /^Thanks$/i,
+                    /^\d+ views?$/i,
+                    /^\d+ likes?$/i,
+                    /^Add a comment/i,
+                    /^Sort by$/i,
+                    /^Top comments$/i,
+                    /^Newest first$/i,
+                    /^Chapters$/i,
+                    /^Description$/i,
+                    /^Transcript$/i,
                 ];
                 
                 lines = lines.filter(line => {
