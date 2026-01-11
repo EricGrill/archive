@@ -18699,6 +18699,35 @@ try {
                                         // Method 2: Parse transcript from HTML (fallback - this is what worked before!)
                                         console.log('🔄 Bookmarklet extraction failed, trying HTML parsing...');
                                         try {
+                                            // Helper: Extract JSON object with proper boundary matching
+                                            const extractJsonObject = (text, startMarker) => {
+                                                const startIdx = text.indexOf(startMarker);
+                                                if (startIdx === -1) return null;
+                                                let braceIdx = text.indexOf('{', startIdx);
+                                                if (braceIdx === -1) return null;
+                                                let depth = 0, inString = false, escape = false;
+                                                for (let i = braceIdx; i < text.length; i++) {
+                                                    const char = text[i];
+                                                    if (escape) { escape = false; continue; }
+                                                    if (char === '\\' && inString) { escape = true; continue; }
+                                                    if (char === '"' && !escape) { inString = !inString; continue; }
+                                                    if (!inString) {
+                                                        if (char === '{') depth++;
+                                                        else if (char === '}') { depth--; if (depth === 0) return text.substring(braceIdx, i + 1); }
+                                                    }
+                                                }
+                                                return null;
+                                            };
+                                            
+                                            // Helper: Parse JSON with escape handling
+                                            const parseEscapedJson = (jsonStr) => {
+                                                try { return JSON.parse(jsonStr); }
+                                                catch (e) {
+                                                    const unescaped = jsonStr.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '\n');
+                                                    return JSON.parse(unescaped);
+                                                }
+                                            };
+                                            
                                             // Extract ytInitialPlayerResponse from HTML
                                             const markers = [
                                                 'var ytInitialPlayerResponse = ',
