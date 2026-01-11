@@ -18652,6 +18652,83 @@ try {
                                 // Process the extraction
                                 const textarea = document.getElementById('contentInput');
                                 if (textarea && payload.html) {
+                                    // 🎬 YOUTUBE HANDLING: Check for YouTube URL and transcript data FIRST
+                                    const youtubeRegex = /^https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/i;
+                                    const youtubeMatch = payload.url && payload.url.match(youtubeRegex);
+                                    
+                                    if (youtubeMatch) {
+                                        console.log('🎬 YouTube detected in mobile handler');
+                                        
+                                        if (payload.youtubeData && payload.youtubeData.transcript) {
+                                            console.log('✅ Using client-side transcript from bookmarklet');
+                                            console.log('   Video:', payload.youtubeData.title);
+                                            console.log('   Transcript length:', payload.youtubeData.transcript.length, 'chars');
+                                            
+                                            // Clean the transcript with noise filter
+                                            const cleanedTranscript = processor.cleanYouTubeSubtitles(payload.youtubeData.transcript);
+                                            
+                                            // Build result directly from bookmarklet data
+                                            const result = {
+                                                content: cleanedTranscript,
+                                                title: payload.youtubeData.title || 'YouTube Video',
+                                                sourceUrl: payload.url,
+                                                url: payload.url,
+                                                type: 'youtube-transcript',
+                                                method: 'youtube-captions',
+                                                extractionMethod: 'youtube-captions',
+                                                wordCount: cleanedTranscript.split(/\s+/).filter(w => w.length > 0).length,
+                                                imageCount: 0,
+                                                images: [],
+                                                metadata: {
+                                                    videoId: payload.youtubeData.videoId,
+                                                    author: payload.youtubeData.author,
+                                                    captionLang: payload.youtubeData.captionLang,
+                                                    extractedVia: 'client-side-bookmarklet'
+                                                }
+                                            };
+                                            
+                                            // Store for processContent fallback
+                                            window._youtubeBookmarkletData = result;
+                                            
+                                            // Generate hashes
+                                            const hashes = await processor.generateHashes(cleanedTranscript, result.title);
+                                            result.hashes = hashes;
+                                            
+                                            // Store in processor
+                                            processor.currentData = result;
+                                            
+                                            // Show preview
+                                            showPreview(result);
+                                            showNotification('✅ Transcript extracted successfully!');
+                                            return; // Exit - YouTube handled
+                                        } else {
+                                            // No transcript from bookmarklet - show helpful error
+                                            console.error('❌ YouTube: No transcript from bookmarklet');
+                                            const videoId = youtubeMatch[1];
+                                            showModal(`
+                                                <div style="padding: var(--spacing-xl); text-align: center;">
+                                                    <div style="font-size: 48px; margin-bottom: var(--spacing-md);">🎬</div>
+                                                    <h2 style="margin-bottom: var(--spacing-md); color: var(--text-primary);">Transcript Not Available</h2>
+                                                    <p style="color: var(--text-secondary); margin-bottom: var(--spacing-sm);">
+                                                        <strong>This video doesn't have captions available.</strong>
+                                                    </p>
+                                                    <p style="color: var(--text-tertiary); font-size: 0.9rem; margin-bottom: var(--spacing-lg);">
+                                                        The bookmarklet couldn't extract captions from this video. It may be age-restricted, private, or simply doesn't have captions enabled.
+                                                    </p>
+                                                    <div class="btn-group" style="gap: 10px;">
+                                                        <button class="btn btn-primary" onclick="closeModal(); archiveYouTubeMetadata('${payload.url}', '${videoId}');" style="min-height: var(--touch-target);">
+                                                            📝 Archive Video Info Instead
+                                                        </button>
+                                                        <button class="btn" onclick="closeModal();" style="background: rgba(100, 116, 139, 0.1); color: var(--text-secondary); min-height: var(--touch-target);">
+                                                            Cancel
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            `);
+                                            return; // Exit - don't process as regular HTML
+                                        }
+                                    }
+                                    
                                     // Store HTML in textarea first (needed for processContent later)
                                     textarea.value = payload.html;
                                     
